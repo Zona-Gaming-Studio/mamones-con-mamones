@@ -16,6 +16,9 @@ Versión criolla de *Manzanas con Manzanas* (Apples to Apples) con jerga venezol
 
 ## Stack y estructura
 - Vite + React + Phaser 3 + Supabase. Gestor: **bun**.
+- **Identidad visual / tokens:** ver **`BRANDKIT.md`** (paleta, tipografía, componentes,
+  anatomía de cartas, ruleta, animaciones + bloque para herramientas de IA de diseño).
+  Fuente de verdad de tokens: `src/index.css` (`:root`) y `GameScene.js` (`COLORS`).
 - `src/main.jsx`, `src/App.jsx` (pantallas: menu / sp / lobby / **admin** vía `?admin`).
 - `src/ui/Admin.jsx` (+ `.css`) — **panel de administración de cartas** (ver sección "Panel admin"). `src/lib/csv.js` — parser/serializador CSV.
 - `src/ui/Menu.jsx` — menú principal (botón Multijugador beta).
@@ -107,6 +110,11 @@ bun run build
 - Llevar el flavor/long-press y otros detalles también al single-player si se desea.
 
 ## Hecho recientemente
+- **Brand kit + design specs (`BRANDKIT.md`):** identidad visual documentada desde el
+  código (paleta/tokens, tipografía, radios/sombras, componentes, anatomía de cartas,
+  los 6 efectos de la ruleta, timings de animación, layout responsive, voz/tono) +
+  un bloque listo para pegar en herramientas de IA de diseño (Stitch/Banani/v0). Nace
+  del trabajo de explorar mejoras de UI con IA.
 - **Panel admin de cartas + auth real con roles:** nueva pantalla `/?admin` (`src/ui/Admin.jsx`) con login **correo+clave y Google**, gated por **rol `admin`**. CRUD de cartas (filtros, crear/editar/borrar, toggle `activa`) + **import/export CSV** (`src/lib/csv.js`, upsert por `(color,texto)`). Roles en `user_roles` + `is_admin`/`has_role` y **RLS de escritura en `cartas` solo admin** (migración `0021`). El juego sigue con login anónimo (sin romperse). **Falta: correr `0021`, habilitar el provider Google en Supabase, y bootstrap del primer admin** (ver sección "Panel admin").
 - **Fixes de la Ruleta del Mamón Amargo (MP se pone a la par del SP):** (1) la rueda **no giraba en móvil** — la rotación final se aplicaba en el mismo frame que montaba la rueda y el navegador pintaba directo el ángulo final (transición CSS no dispara); fix: diferir `setRot` con doble `requestAnimationFrame` (`OnlineGame.jsx`). (2) **Pasa el mamón** ahora se ve re-girar la ruleta en el nuevo objetivo (consecuencia del giro móvil + `pasar_mamon` refresca `fase_hasta`, migración `0020`). (3) el **efecto ya no se pierde** si al objetivo le toca ser Juez la ronda siguiente — se conserva pendiente (`avanzar_ronda`, `0020`). (4) **Pela el ojo**: al espiar otra carta la anterior se re-oculta (solo una revelada a la vez). El **SP (Phaser) ya se comportaba bien** en los 4 (tweens de la rueda, press-and-hold para espiar, y difiere el efecto si eres Juez), así que estos fixes fueron solo de MP. **Falta correr `0020` en Supabase.**
 - **Recap de fin de partida (SP + MP):** overlay compartido en el DOM `src/ui/Recap.jsx` (+ `.css`) con **campeón**, **podio** (rondas ganadas por jugador) y **repaso ronda a ronda** (verde → roja ganadora → quién). **MP:** nueva columna `salas.historial` (migración `0019`) que `OnlineGame` lee en fase `terminado`. **SP (Phaser):** `GameScene` acumula `this.history` (push en `awardBest`) y al `gameover` emite `game.events.emit("mcm:gameover", …)`; `PhaserGame.jsx` escucha y renderiza el mismo `<Recap>` (botón "Jugar de nuevo" → `mcm:replay` → `restartGame`; "← Menú" → `onExit`). Regla de paridad cumplida ([[paridad-sp-mp]]). *(No hay "carta más votada": el Juez elige y las reacciones son efímeras.)* **Falta correr `0019` en Supabase.**
