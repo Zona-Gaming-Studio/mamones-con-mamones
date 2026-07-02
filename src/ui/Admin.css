@@ -202,8 +202,9 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+/* "roja" es el valor heredado en la BD; la carta de sustantivo es AMARILLA. */
 .admin__dot--roja {
-  background: #c9352b;
+  background: #e0b93a;
 }
 .admin__dot--verde {
   background: #2e8b2e;

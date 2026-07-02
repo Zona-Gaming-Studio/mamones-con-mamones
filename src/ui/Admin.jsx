@@ -313,8 +313,8 @@ export default function Admin({ onBack }) {
       <div className="admin__bar">
         <select value={color} onChange={(e) => setColor(e.target.value)} className="admin__sel">
           <option value="todas">Todos los colores</option>
-          <option value="roja">🔴 Rojas</option>
-          <option value="verde">🟢 Verdes</option>
+          <option value="roja">🟡 Amarillas (sustantivos)</option>
+          <option value="verde">🟢 Verdes (adjetivos)</option>
         </select>
         <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)} className="admin__sel">
           <option value="todas">Todas las categorías</option>
@@ -386,7 +386,7 @@ export default function Admin({ onBack }) {
                 value={editando.color}
                 onChange={(e) => setEditando({ ...editando, color: e.target.value })}
               >
-                <option value="roja">🔴 Roja (sustantivo)</option>
+                <option value="roja">🟡 Amarilla (sustantivo)</option>
                 <option value="verde">🟢 Verde (adjetivo)</option>
               </select>
             </label>

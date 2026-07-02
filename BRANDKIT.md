@@ -38,12 +38,22 @@ Tokens en `:root` (`src/index.css`) y espejados en `COLORS` (Phaser, `GameScene.
 **Fondo estándar:** `radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom))`.
 
 ### Cartas
+Las cartas son ilustraciones de **mamón** (la fruta): mamón **amarillo** (sustantivo)
+y mamón **verde** (adjetivo). Arte en `public/assets/mamon_amarillo.png` y
+`mamon_verde.png` (SP y MP usan el mismo arte).
+
+> ⚠️ **Ojo con la nomenclatura:** lo que en *Manzanas con Manzanas* son tarjetas
+> **rojas**, aquí son **AMARILLAS**. En la BD y en el código el `color` del sustantivo
+> es `'roja'` (nombre **heredado**, no lo renombramos por el esquema/RPCs/CSV), pero
+> **visualmente y de cara al usuario son amarillas**.
+
 | Elemento | Valor |
 |---|---|
-| Carta roja — cara | `#f4ecd2` (crema) |
-| Carta roja — borde/acento | `#8a1c10` / selección `#c0392b` |
-| Carta verde — borde/acento | `#2e8b2e` |
-| Borde de ganadora | `inset 0 0 0 3px var(--gold)` |
+| Carta **amarilla** (sustantivo) — arte | `mamon_amarillo.png` |
+| Carta amarilla — color de texto | `#8a1c10` (rojo oscuro, para contraste sobre el amarillo) |
+| Carta **verde** (adjetivo) — arte | `mamon_verde.png` |
+| Vista ampliada (long-press) — cara | crema `#f4ecd2`, borde `#8a1c10` (amarilla) o `#2e8b2e` (verde) |
+| Borde de ganadora / selección | `inset 0 0 0 3px var(--gold)` / roja de selección `#c0392b` |
 
 ### Colores de la ruleta (una cuña por efecto)
 `1 #ffd35c` · `2 #8a1c10` · `3 #2e8b2e` · `4 #e08a1c` · `5 #3a6ea5` · `6 #6b3fa0`
@@ -86,8 +96,11 @@ Tokens en `:root` (`src/index.css`) y espejados en `COLORS` (Phaser, `GameScene.
 
 ## 6. Anatomía de las cartas
 
-- **Verde = adjetivo** (la que juzga la ronda). **Roja = sustantivo** (las de la mano).
-- Cara: título grande centrado + una **frase "flavor" en cursiva** al pie (opcional).
+- **Verde (mamón verde) = adjetivo** — la que juzga la ronda.
+- **Amarilla (mamón amarillo) = sustantivo** — las de la mano. *(En datos/código su
+  `color` es `'roja'` por herencia; visualmente es amarilla.)*
+- Cara: ilustración de mamón + título grande centrado + una **frase "flavor" en
+  cursiva** al pie (opcional).
 - **Reverso:** verde/dorado con el **logo** (para cartas anónimas / boca abajo).
 - Categoría interna = columna `tipo` (personajes, dichos… libre).
 
@@ -138,8 +151,9 @@ criollo, divertido, festivo, con clase.
 Estética: mesa de casino de FIELTRO VERDE con acentos DORADOS.
 Paleta: fondo #1f4d2e→#10301d (degradado radial), panel #0c2114 borde #2e6b45,
 dorado (CTA/acento) #ffd35c, texto #eaf5ec / tenue #9fd6a3.
-Cartas Apples-to-Apples: VERDE=adjetivo (borde #2e8b2e), ROJA=sustantivo (cara crema
-#f4ecd2, borde #8a1c10), título grande + frase "flavor" en cursiva, reverso con logo.
+Cartas = ilustraciones de mamón: VERDE=adjetivo (mamón verde), AMARILLA=sustantivo
+(mamón amarillo, texto rojo oscuro #8a1c10). Título grande + frase "flavor" en
+cursiva, reverso con logo. (Ojo: NO son rojas como en Apples to Apples; son amarillas.)
 Tipografía Inter. Radios: cartas 10px, paneles 18–22px, botones pastilla (full).
 Botón CTA dorado. Táctil, respeta el notch. Legibilidad de cartas prioritaria.
 ```
@@ -149,6 +163,7 @@ Botón CTA dorado. Táctil, respeta el notch. Legibilidad de cartas prioritaria.
 - **Tokens:** `src/index.css` (`:root`) y `src/game/scenes/GameScene.js` (`const COLORS`).
 - **Componentes/estilos:** `src/ui/*.css` (Menu, Lobby, OnlineGame, Recap, Admin,
   ComoJugar, AcercaDe, Splash).
-- **Cartas SP:** plantillas en `public/` + `GameScene.makeRedCard` / `makeCardBack`.
-- **Cartas MP:** clase `.carta` en `OnlineGame.css`.
+- **Arte de cartas:** `public/assets/mamon_amarillo.png` (sustantivo) y `mamon_verde.png`
+  (adjetivo). SP: `Preloader` (`plantillaAmarilla`/`plantillaVerde`) + `GameScene`. MP:
+  `.carta--roja` (usa `mamon_amarillo.png`) / `.carta--verde` en `OnlineGame.css`.
 - Regla de paridad: cambios visuales van a SP (Phaser) **y** MP (React) — ver `HANDOFF.md`.
