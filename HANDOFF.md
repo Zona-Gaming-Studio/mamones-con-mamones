@@ -16,7 +16,8 @@ Versión criolla de *Manzanas con Manzanas* (Apples to Apples) con jerga venezol
 
 ## Stack y estructura
 - Vite + React + Phaser 3 + Supabase. Gestor: **bun**.
-- `src/main.jsx`, `src/App.jsx` (pantallas: menu / sp / lobby).
+- `src/main.jsx`, `src/App.jsx` (pantallas: menu / sp / lobby / **admin** vía `?admin`).
+- `src/ui/Admin.jsx` (+ `.css`) — **panel de administración de cartas** (ver sección "Panel admin"). `src/lib/csv.js` — parser/serializador CSV.
 - `src/ui/Menu.jsx` — menú principal (botón Multijugador beta).
 - `src/ui/Lobby.jsx` — lobby online: crear/unirse, **presencia**, **config de sala** (modo, cartas-para-ganar, piensa rápido), **reconexión** (localStorage `mcm_room`), migración de host, **invitar/compartir** (Web Share API + fallback a portapapeles; enlace profundo `?sala=CÓDIGO`).
 - `src/ui/OnlineGame.jsx` — **tablero online** (React/HTML reutilizando el arte de las cartas). Renderiza estado remoto + intenciones por RPC. Realtime + **polling de respaldo cada 3s**.
@@ -28,6 +29,21 @@ Versión criolla de *Manzanas con Manzanas* (Apples to Apples) con jerga venezol
 - Fuente de verdad para repartir: tabla `public.cartas` en Supabase (columnas: `color` verde/roja, `tipo` = categoría libre → "Otros" si vacía, `texto`, `flavor`).
 - Autoría en **Google Sheets** → export a **`cartas.csv`** (rojas: `INDICE,COLOR,TIPO,TEXTO,FLAVOR`) y **`db/verdes.csv`** (verdes: `tipo,texto,flavor`).
 - Generar seed: `bun scripts/gen-cartas.mjs` → escribe `supabase/migrations/0002_seed_cartas.sql` (upsert). Luego correr ese SQL en Supabase.
+
+## Panel admin (CRUD de cartas)
+- **Acceso:** URL `/?admin` (no aparece en el menú público). Requiere **sesión real** (correo+clave o Google) con **rol `admin`**. Sin sesión → login; sesión sin rol → "sin permiso". Los jugadores normales siguen con login **anónimo**; el auth real convive sin romper el juego (`ensureAuth` respeta la sesión existente).
+- **Qué hace:** listar/filtrar (color, categoría, búsqueda, solo-activas), crear/editar/borrar cartas, toggle `activa`, y **exportar/importar CSV** (formato unificado `color,tipo,texto,flavor,activa`; el import hace **upsert por `(color,texto)`**). Es el camino recomendado para editar cartas en vivo; el flujo CSV+`gen-cartas` sigue sirviendo para siembra masiva.
+- **Seguridad:** RLS en `cartas` permite escritura solo a admins (`is_admin`), así que aunque alguien tenga la anon key no puede alterar el mazo.
+- **Setup (una vez):**
+  1. **Correr la migración `0021`** en el SQL Editor.
+  2. En Supabase → *Authentication → Providers*: habilitar **Email** y **Google**. Para Google: crear credenciales OAuth en Google Cloud, pegar Client ID/Secret, y añadir a *URL Configuration* el **Site URL** y los **Redirect URLs** (incluir `https://<tu-dominio>/?admin` y `http://localhost:8000/?admin` para dev). (Opcional: desactivar "Confirm email" para altas de equipo, o confirmar manualmente.)
+  3. Entrar a `/?admin`, **registrarte** (correo o Google) una vez.
+  4. Concederte admin (y a cada miembro del equipo) con el SQL comentado al final de `0021`:
+     ```sql
+     insert into public.user_roles (user_id, role)
+     select id, 'admin' from auth.users where email = 'tucorreo@ejemplo.com'
+     on conflict do nothing;
+     ```
 
 ## Arquitectura multijugador
 - **Autoridad server-side:** funciones RPC `SECURITY DEFINER` + **RLS**. Los clientes NUNCA escriben las tablas de juego; solo invocan RPCs validadas.
@@ -55,7 +71,8 @@ Versión criolla de *Manzanas con Manzanas* (Apples to Apples) con jerga venezol
 - **0017 ruleta_congelada**: congelar solo con Piensa Rápido.
 - **0018 descarte_rojas**: descarte de rojas por partida (`salas.mazo_rojo`). Una carta jugada/descartada NO reaparece en ninguna mano hasta que termina la partida; `repartir_mano` excluye manos + mesa + descarte y recicla el descarte si el mazo se agota. Índice único `cartas_mano(sala_id,carta)` como garantía dura.
 - **0019 recap_historial**: `salas.historial jsonb` para el recap final. Se anexa una entrada por ronda ganada (`{ronda, verde, roja, ganador_uid, ganador}`) en `elegir_ganadora` y en el auto-win (1 carta) de `resolver_timeout`; se resetea en `iniciar_partida`/`reiniciar_partida`. Además define `meta_ganar` + `cartas_para_ganar` (la 0012 nunca se aplicó: su `meta_ganar` tenía `cartas_para_ganar(bigint)` sin castear y fallaba al crearse). **Correr en Supabase.**
-- **0020 fix_ruleta_efectos** (último): correcciones de la Ruleta del Mamón Amargo en MP. `avanzar_ronda` conserva el efecto pendiente si el objetivo pasa a ser Juez (antes se perdía); `pasar_mamon` refresca `fase_hasta` para dar tiempo a ver la ruleta re-girar. **Correr en Supabase.**
+- **0020 fix_ruleta_efectos**: correcciones de la Ruleta del Mamón Amargo en MP. `avanzar_ronda` conserva el efecto pendiente si el objetivo pasa a ser Juez (antes se perdía); `pasar_mamon` refresca `fase_hasta` para dar tiempo a ver la ruleta re-girar.
+- **0021 roles_admin** (último): enum `app_role`, tabla `user_roles`, funciones `has_role`/`is_admin` (SECURITY DEFINER, evitan recursión de RLS) y **políticas RLS de escritura en `cartas` solo para admins** (lectura sigue pública). Incluye al final (comentado) el SQL para **bootstrap del primer admin**. **Correr en Supabase.**
 
 ## Gotchas aprendidos (importantes)
 - **pgbouncer + rowtype cacheado:** funciones con `select * into v_sala salas` y luego `v_sala.<columna_nueva>` fallan con *“record has no field …”* tras agregar columnas. **Fix:** leer la columna nueva como **escalar** (`select col into v_x ...`). Ya aplicado en cerrar_jugadas/avanzar_ronda/resolver_timeout.
@@ -90,6 +107,7 @@ bun run build
 - Llevar el flavor/long-press y otros detalles también al single-player si se desea.
 
 ## Hecho recientemente
+- **Panel admin de cartas + auth real con roles:** nueva pantalla `/?admin` (`src/ui/Admin.jsx`) con login **correo+clave y Google**, gated por **rol `admin`**. CRUD de cartas (filtros, crear/editar/borrar, toggle `activa`) + **import/export CSV** (`src/lib/csv.js`, upsert por `(color,texto)`). Roles en `user_roles` + `is_admin`/`has_role` y **RLS de escritura en `cartas` solo admin** (migración `0021`). El juego sigue con login anónimo (sin romperse). **Falta: correr `0021`, habilitar el provider Google en Supabase, y bootstrap del primer admin** (ver sección "Panel admin").
 - **Fixes de la Ruleta del Mamón Amargo (MP se pone a la par del SP):** (1) la rueda **no giraba en móvil** — la rotación final se aplicaba en el mismo frame que montaba la rueda y el navegador pintaba directo el ángulo final (transición CSS no dispara); fix: diferir `setRot` con doble `requestAnimationFrame` (`OnlineGame.jsx`). (2) **Pasa el mamón** ahora se ve re-girar la ruleta en el nuevo objetivo (consecuencia del giro móvil + `pasar_mamon` refresca `fase_hasta`, migración `0020`). (3) el **efecto ya no se pierde** si al objetivo le toca ser Juez la ronda siguiente — se conserva pendiente (`avanzar_ronda`, `0020`). (4) **Pela el ojo**: al espiar otra carta la anterior se re-oculta (solo una revelada a la vez). El **SP (Phaser) ya se comportaba bien** en los 4 (tweens de la rueda, press-and-hold para espiar, y difiere el efecto si eres Juez), así que estos fixes fueron solo de MP. **Falta correr `0020` en Supabase.**
 - **Recap de fin de partida (SP + MP):** overlay compartido en el DOM `src/ui/Recap.jsx` (+ `.css`) con **campeón**, **podio** (rondas ganadas por jugador) y **repaso ronda a ronda** (verde → roja ganadora → quién). **MP:** nueva columna `salas.historial` (migración `0019`) que `OnlineGame` lee en fase `terminado`. **SP (Phaser):** `GameScene` acumula `this.history` (push en `awardBest`) y al `gameover` emite `game.events.emit("mcm:gameover", …)`; `PhaserGame.jsx` escucha y renderiza el mismo `<Recap>` (botón "Jugar de nuevo" → `mcm:replay` → `restartGame`; "← Menú" → `onExit`). Regla de paridad cumplida ([[paridad-sp-mp]]). *(No hay "carta más votada": el Juez elige y las reacciones son efímeras.)* **Falta correr `0019` en Supabase.**
 - **Scroll en pantallas largas (móvil):** `.lobby` y `.menu` recortaban por arriba (flex `align-items:center` sin overflow, con `body{overflow:hidden}`). Fix: `overflow-y:auto` en el contenedor y centrar el panel con `margin:auto` (centra si cabe, scrollea desde arriba si no). Los modales (Cómo jugar / Acerca de) ya scrolleaban bien (`max-height:88vh; overflow-y:auto`).

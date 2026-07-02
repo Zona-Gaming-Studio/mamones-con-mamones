@@ -1,8 +1,19 @@
 import { useState } from "react";
 import Menu from "./ui/Menu.jsx";
 import Lobby from "./ui/Lobby.jsx";
+import Admin from "./ui/Admin.jsx";
 import PhaserGame from "./game/PhaserGame.jsx";
 import Splash from "./ui/Splash.jsx";
+
+// ¿Se pidió el panel admin? (?admin en la URL). Se conserva el parámetro para
+// que un refresh o la vuelta del OAuth de Google sigan mostrando el panel.
+const ES_ADMIN = (() => {
+  try {
+    return new URLSearchParams(window.location.search).has("admin");
+  } catch {
+    return false;
+  }
+})();
 
 // Lee ?sala=CODIGO de la URL (enlace de invitación) una sola vez y lo limpia.
 function leerInvitacion() {
@@ -21,8 +32,8 @@ const INVITACION = leerInvitacion();
 
 // Pantallas: "menu" | "sp" (single-player) | "lobby" (multijugador).
 export default function App() {
-  const [splash, setSplash] = useState(true);
-  const [screen, setScreen] = useState(INVITACION ? "lobby" : "menu");
+  const [splash, setSplash] = useState(!ES_ADMIN);
+  const [screen, setScreen] = useState(ES_ADMIN ? "admin" : INVITACION ? "lobby" : "menu");
   const [gameConfig, setGameConfig] = useState(null);
 
   const volverAlMenu = () => {
@@ -58,6 +69,8 @@ export default function App() {
     );
   } else if (screen === "lobby") {
     content = <Lobby initialCode={INVITACION} onBack={() => setScreen("menu")} />;
+  } else if (screen === "admin") {
+    content = <Admin onBack={() => setScreen("menu")} />;
   } else {
     content = (
       <Menu

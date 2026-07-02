@@ -22,6 +22,8 @@ Leyenda de esfuerzo/impacto: 🟢 bajo · 🟡 medio · 🔴 alto.
 - [x] **Reacciones / emotes** `[MP]` — 👏😂🤢🔥❤️ sobre cada carta jugada, flotan para todos (broadcast).
 - [x] **Recap de fin de partida** (SP + MP) — overlay compartido `src/ui/Recap.jsx`: campeón, **podio** (rondas ganadas) y **repaso ronda a ronda** (verde → roja ganadora → quién). MP persiste `salas.historial` (migración `0019`); SP lo emite desde Phaser (`mcm:gameover`). *(Nota: no hay "carta más votada" porque el Juez elige y las reacciones son efímeras.)*
 - [x] **Scroll en pantallas largas (móvil)** — el lobby/menú ya no recortan arriba: `overflow-y:auto` + panel centrado con `margin:auto`.
+- [x] **Fixes Ruleta del Mamón Amargo (MP)** — giraba solo en escritorio (fix con doble `rAF`), "pasa el mamón" ahora re-gira para el nuevo objetivo, el efecto no se pierde si el objetivo es Juez la ronda siguiente (`0020`), y "pela el ojo" re-oculta la carta anterior. El SP ya estaba bien.
+- [x] **Panel admin de cartas + auth con roles** — `/?admin` (`src/ui/Admin.jsx`): login correo+clave/Google, rol `admin` (`user_roles` + `is_admin`, RLS de escritura solo admin, `0021`), CRUD de cartas + import/export CSV. Sienta la base de "Cuentas reales".
 
 ## Profundidad de juego (SP + MP)
 - [ ] **Carta en blanco** — el jugador escribe su propia roja esa ronda (estilo Cards Against Humanity). Gran rejugabilidad. Esfuerzo 🟡 · Impacto 🔴
@@ -32,7 +34,7 @@ Leyenda de esfuerzo/impacto: 🟢 bajo · 🟡 medio · 🔴 alto.
 - [ ] **Más efectos de ruleta / pool configurable** del Mamón Amargo. Esfuerzo 🟡 · Impacto 🟢
 
 ## Social / retención `[MP]`
-- [ ] **Cuentas reales** (hoy login anónimo) → perfiles, avatar, estadísticas e historial. Desbloquea casi todo lo de abajo. Esfuerzo 🔴 · Impacto 🔴
+- [ ] **Cuentas reales** (hoy login anónimo) → perfiles, avatar, estadísticas e historial. Desbloquea casi todo lo de abajo. Esfuerzo 🔴 · Impacto 🔴 · *(Ya existe la base de auth: correo+clave/Google + roles del panel admin; falta llevar cuentas a los jugadores + perfiles/stats.)*
 - [ ] **Amigos / revancha con el mismo grupo**, salas con nombre. Esfuerzo 🟡 · Impacto 🟡
 - [ ] **Leaderboards y logros.** Esfuerzo 🟡 · Impacto 🟡
 - [ ] **Modo espectador** para quien llega tarde. Esfuerzo 🟡 · Impacto 🟢
