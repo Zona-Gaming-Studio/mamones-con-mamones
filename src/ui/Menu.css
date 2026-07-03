@@ -101,12 +101,20 @@
   color: var(--text-muted);
 }
 
-/* Botones secundarios como fila: icono + texto a la izquierda (prototipo). */
+/* Botones secundarios como fila (prototipo): rectángulo redondeado tipo card
+   con superficie oscura — la pastilla completa queda solo para el CTA dorado. */
 .btn--row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   text-align: left;
+  border-radius: 16px;
+  background: rgba(12, 33, 20, 0.6);
+  padding: 17px 18px;
+  font-size: 17px;
+}
+.btn--row:hover:not(:disabled) {
+  background: rgba(24, 56, 36, 0.7);
 }
 .btn__ico {
   flex: none;
