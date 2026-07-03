@@ -17,6 +17,27 @@ const IcoCheck = () => (
     <path d="M20 6 9 17l-5-5" />
   </svg>
 );
+const IcoAtras = () => (
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+);
+
+// Header del prototipo: botón atrás + eyebrow y título centrados.
+function LobbyHeader({ onBack, backLabel, eyebrow, title }) {
+  return (
+    <header className="lhead">
+      <button className="lhead__back" onClick={onBack} aria-label={backLabel}>
+        <IcoAtras />
+      </button>
+      <div className="lhead__titles">
+        <span className="lhead__eyebrow">{eyebrow}</span>
+        <span className="lhead__title">{title}</span>
+      </div>
+      <span className="lhead__spacer" aria-hidden="true" />
+    </header>
+  );
+}
 
 export default function Lobby({ onBack, initialCode }) {
   const [uid, setUid] = useState(null);
@@ -255,9 +276,17 @@ export default function Lobby({ onBack, initialCode }) {
 
   // ---- En sala, esperando el inicio ----
   if (room) {
+    const hostNombre = players.find((p) => p.uid === hostUid)?.nombre;
     return (
       <div className="lobby">
         <div className="lobby__panel">
+          <LobbyHeader
+            onBack={salir}
+            backLabel="Salir de la sala"
+            eyebrow="Lobby"
+            title={hostNombre ? `Sala de ${hostNombre}` : `Sala ${room.codigo}`}
+          />
+
           {/* Card de código (hero del prototipo): eyebrow + código gigante + copiar + invitar. */}
           <div className="roomcard">
             <p className="lobby__eyebrow">Código de sala</p>
@@ -387,12 +416,6 @@ export default function Lobby({ onBack, initialCode }) {
           )}
 
           {error && <p className="lobby__error">{error}</p>}
-
-          <div className="lobby__actions">
-            <button className="btn btn--ghost" onClick={salir}>
-              ← Salir de la sala
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -402,7 +425,12 @@ export default function Lobby({ onBack, initialCode }) {
   return (
     <div className="lobby">
       <div className="lobby__panel">
-        <h1 className="lobby__title">Jugar en línea</h1>
+        <LobbyHeader
+          onBack={onBack}
+          backLabel="Volver al menú"
+          eyebrow="Multijugador"
+          title="Jugar en línea"
+        />
 
         {initialCode && (
           <p className="lobby__invite">
@@ -410,6 +438,7 @@ export default function Lobby({ onBack, initialCode }) {
           </p>
         )}
 
+        {/* El nombre aplica tanto a crear como a unirse: va arriba de las dos cards. */}
         <label className="field">
           <span className="field__label">Tu nombre</span>
           <input
@@ -421,34 +450,33 @@ export default function Lobby({ onBack, initialCode }) {
           />
         </label>
 
-        <button className="btn btn--primary" disabled={busy || !uid} onClick={crearSala}>
-          Crear partida
-        </button>
+        <section className="lcard">
+          <p className="lcard__title">Crear sala nueva</p>
+          <p className="lcard__desc">Abre una sala y comparte el código con tu gente.</p>
+          <button className="btn btn--primary" disabled={busy || !uid} onClick={crearSala}>
+            Crear partida
+          </button>
+        </section>
 
-        <div className="divider"><span>o</span></div>
-
-        <label className="field">
-          <span className="field__label">Código de sala</span>
-          <input
-            className="field__input field__input--code"
-            value={codigoInput}
-            maxLength={6}
-            placeholder="MAMON7"
-            onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
-          />
-        </label>
-        <button className="btn" disabled={busy || !uid} onClick={unirseSala}>
-          Unirse con código
-        </button>
+        <section className="lcard">
+          <p className="lcard__title">Unirse a una sala</p>
+          <label className="field">
+            <span className="field__label">Código de sala</span>
+            <input
+              className="field__input field__input--code"
+              value={codigoInput}
+              maxLength={6}
+              placeholder="MAMON7"
+              onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
+            />
+          </label>
+          <button className="btn" disabled={busy || !uid} onClick={unirseSala}>
+            Unirse con código
+          </button>
+        </section>
 
         {error && <p className="lobby__error">{error}</p>}
         {!uid && !error && <p className="lobby__hint">Iniciando sesión…</p>}
-
-        <div className="lobby__actions">
-          <button className="btn btn--ghost" onClick={onBack}>
-            ← Volver
-          </button>
-        </div>
       </div>
     </div>
   );

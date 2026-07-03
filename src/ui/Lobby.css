@@ -19,11 +19,82 @@
   margin: auto;
 }
 
-.lobby__title {
-  margin: 0 0 22px;
+/* Header del prototipo: atrás + eyebrow y título centrados. */
+.lhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.lhead__back {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(12, 33, 20, 0.6);
+  color: var(--text-light);
+  cursor: pointer;
+}
+.lhead__back:active {
+  transform: scale(0.94);
+}
+.lhead__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
   text-align: center;
-  font-size: clamp(24px, 5vw, 32px);
+}
+.lhead__eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.lhead__title {
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 800;
   color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Espaciador del ancho del botón atrás: mantiene el título centrado. */
+.lhead__spacer {
+  flex: none;
+  width: 44px;
+}
+
+/* Cards de sección del home (crear / unirse), misma superficie que la sala. */
+.lcard {
+  background: rgba(12, 33, 20, 0.6);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 16px 14px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.lcard__title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.lcard__desc {
+  margin: -4px 0 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .lobby__eyebrow {
@@ -195,25 +266,6 @@
   letter-spacing: 2px;
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  color: var(--text-muted);
-  margin: 16px 0;
-  font-size: 13px;
-}
-.divider::before,
-.divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--panel-border);
-}
-.divider span {
-  padding: 0 12px;
-}
-
 /* Lista de jugadores */
 .players {
   margin: 8px 0 4px;
@@ -314,10 +366,6 @@
   background: var(--gold);
   border-radius: 999px;
   padding: 2px 8px;
-}
-
-.lobby__actions {
-  margin-top: 16px;
 }
 
 /* Configuración de la sala (modo + piensa rápido), como card "Reglas de mesa". */
