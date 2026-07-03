@@ -11,14 +11,10 @@
   background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
 }
 
+/* Sin panel contenedor (prototipo): las secciones son cards sueltas sobre el fieltro. */
 .menu__panel {
   width: min(560px, 100%);
   margin: auto;
-  background: rgba(12, 33, 20, 0.78);
-  border: 1px solid var(--panel-border);
-  border-radius: 22px;
-  padding: 32px 28px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
 }
 
 .menu__title {
@@ -86,7 +82,8 @@
   padding: 16px;
   border-radius: 18px;
   border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(12, 33, 20, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 }
 .menu__solo-head {
   display: flex;
@@ -131,12 +128,25 @@
   padding: 3px 10px;
 }
 
-/* Crear partida */
+/* Crear partida: cards de sección sobre el fondo (mismo patrón que el lobby). */
+.create__card {
+  background: rgba(12, 33, 20, 0.6);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.create__card > :last-child {
+  margin-bottom: 0;
+}
 .create__label {
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   color: var(--text-muted);
-  font-weight: 700;
-  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  text-align: left;
 }
 
 .modes {
