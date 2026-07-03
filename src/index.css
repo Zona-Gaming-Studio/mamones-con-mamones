@@ -33,3 +33,21 @@ body {
 #root {
   display: flex;
 }
+
+/* Foco visible para navegación por teclado (las cartas son <button>). */
+:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Respeta la preferencia de movimiento reducido: corta animaciones y
+   transiciones (ruleta, cartas volando, reacciones, pops, parpadeos). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

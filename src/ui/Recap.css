@@ -7,6 +7,8 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   background: rgba(4, 14, 8, 0.72);
   backdrop-filter: blur(3px);
 }

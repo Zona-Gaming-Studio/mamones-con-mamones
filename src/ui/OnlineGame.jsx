@@ -8,6 +8,12 @@ import "./OnlineGame.css";
 const CAN_HOVER =
   typeof window !== "undefined" && window.matchMedia && window.matchMedia("(hover: hover)").matches;
 
+// ¿El usuario pidió movimiento reducido? (acorta ruleta/cartas volando y calla los tics)
+const REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 function metaGanar(n) {
   if (n >= 8) return 4;
   if (n === 7) return 5;
@@ -49,6 +55,15 @@ const COLOR_EFECTO = {
 // Efectos que entran al sorteo. 'Mano congelada' (2) solo con Piensa Rápido.
 const efectosRuleta = (piensaRapido) =>
   piensaRapido ? [1, 2, 3, 4, 5, 6] : [1, 3, 4, 5, 6];
+
+// Reacciones disponibles sobre las cartas jugadas (emoji + nombre accesible).
+const REACCIONES = [
+  { emoji: "👏", nombre: "aplauso" },
+  { emoji: "😂", nombre: "risa" },
+  { emoji: "🤢", nombre: "asco" },
+  { emoji: "🔥", nombre: "fuego" },
+  { emoji: "❤️", nombre: "corazón" },
+];
 
 function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganadora, peor, anon, onLongPress, onLongPressEnd }) {
   const timer = useRef(null);
@@ -328,8 +343,10 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
       const raf1 = requestAnimationFrame(() => {
         raf2 = requestAnimationFrame(() => setRot(target));
       });
-      spinTicks(2600);
-      const t = setTimeout(() => setVerRes(true), 2600);
+      // Con movimiento reducido: sin giro largo ni tics; el resultado casi de inmediato.
+      const spinMs = REDUCED_MOTION ? 200 : 2600;
+      if (!REDUCED_MOTION) spinTicks(spinMs);
+      const t = setTimeout(() => setVerRes(true), spinMs);
       return () => {
         cancelAnimationFrame(raf1);
         cancelAnimationFrame(raf2);
@@ -376,7 +393,7 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
     setTimeout(() => {
       setMyPlayed((m) => [...m, carta]);
       setFlying(null);
-    }, 520);
+    }, REDUCED_MOTION ? 0 : 520);
   };
   // --- Chat y reacciones (efímeros, vía broadcast del canal) ---
   const uid7 = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -465,11 +482,23 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
           {piensaRapido ? " · ⚡" : ""} · Ronda {ronda} · Meta {meta}
         </span>
         <span className="og__topbtns">
-          <button className="og__mute og__chatbtn" onClick={() => setChatOpen((v) => !v)} title="Chat">
+          <button
+            className="og__mute og__chatbtn"
+            onClick={() => setChatOpen((v) => !v)}
+            title="Chat"
+            aria-label={chatUnread > 0 ? `Chat (${chatUnread} sin leer)` : "Chat de la sala"}
+            aria-expanded={chatOpen}
+          >
             💬
             {chatUnread > 0 && <span className="og__badge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
           </button>
-          <button className="og__mute" onClick={toggleMute} title="Sonido">
+          <button
+            className="og__mute"
+            onClick={toggleMute}
+            title="Sonido"
+            aria-label={muted ? "Activar sonido" : "Silenciar"}
+            aria-pressed={muted}
+          >
             {muted ? "🔇" : "🔊"}
           </button>
           <button className="og__leave" onClick={salir}>
@@ -516,12 +545,24 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
       </div>
 
       <p className="og__banner">
-        {banner}
+        {/* Live region solo sobre el texto de fase: el reloj queda fuera para no anunciar cada segundo. */}
+        <span aria-live="polite">{banner}</span>
         {secsLeft != null && ["jugando", "juzgando", "resultado"].includes(fase) && (
-          <span className={`og__clock ${secsLeft <= 10 ? "og__clock--urge" : ""}`}> · ⏱ {secsLeft}s</span>
+          <span
+            className={`og__clock ${secsLeft <= 10 ? "og__clock--urge" : ""} ${
+              secsLeft > 0 && secsLeft <= 5 ? "og__clock--blink" : ""
+            }`}
+          >
+            {" "}
+            · ⏱ {secsLeft}s
+          </span>
         )}
       </p>
-      {error && <p className="og__error">{error}</p>}
+      {error && (
+        <p className="og__error" role="alert">
+          {error}
+        </p>
+      )}
       {["juzgando", "resultado"].includes(fase) && piensaRapido && !esJuez && misJugadas === 0 && (
         <p className="og__nota">🐢 Te pasaste de lento: esta ronda tu carta se quedó en la mano.</p>
       )}
@@ -611,14 +652,20 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
                   className="og__reactbtn"
                   onClick={() => setReactFor(reactFor === m.id ? null : m.id)}
                   title="Reaccionar"
+                  aria-label="Reaccionar a esta carta"
+                  aria-expanded={reactFor === m.id}
                 >
                   😀
                 </button>
                 {reactFor === m.id && (
                   <div className="og__reactpick">
-                    {["👏", "😂", "🤢", "🔥", "❤️"].map((e) => (
-                      <button key={e} onClick={() => enviarReaccion(m.id, e)}>
-                        {e}
+                    {REACCIONES.map((r) => (
+                      <button
+                        key={r.emoji}
+                        onClick={() => enviarReaccion(m.id, r.emoji)}
+                        aria-label={`Reaccionar con ${r.nombre}`}
+                      >
+                        {r.emoji}
                       </button>
                     ))}
                   </div>
@@ -685,9 +732,11 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
         </div>
       )}
 
-      {/* Vista ampliada al mantener pulsada una carta */}
+      {/* Vista ampliada al mantener pulsada una carta.
+          El overlay tiene pointer-events:none (el cierre vive en el endPress de la carta),
+          así que no lleva handlers propios. */}
       {preview && (
-        <div className="og__preview" onPointerUp={cerrarPreview} onClick={cerrarPreview}>
+        <div className="og__preview">
           <div className={`og__preview-card og__preview-card--${preview.color}`}>
             <span className="og__preview-titulo">{preview.titulo}</span>
             {preview.flavor && <span className="og__preview-flavor">{preview.flavor}</span>}

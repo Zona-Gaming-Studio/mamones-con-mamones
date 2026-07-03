@@ -6,6 +6,8 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
 }
 
@@ -56,6 +58,9 @@
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.1);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .btn:disabled {
   opacity: 0.4;
@@ -242,6 +247,13 @@
   justify-content: center;
   cursor: help;
   flex: none;
+}
+/* Extiende el área táctil del "i" a 44px sin cambiar su tamaño visual. */
+.info::after {
+  content: "";
+  position: absolute;
+  inset: -11px;
+  border-radius: 50%;
 }
 .info__tip {
   position: absolute;

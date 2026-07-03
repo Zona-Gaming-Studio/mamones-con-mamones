@@ -8,6 +8,8 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
 }
 
@@ -84,7 +86,6 @@
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-light);
   font-size: 16px;
-  outline: none;
 }
 .field__input:focus {
   border-color: var(--gold);
@@ -111,6 +112,9 @@
 }
 .btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .btn:disabled {
   opacity: 0.5;

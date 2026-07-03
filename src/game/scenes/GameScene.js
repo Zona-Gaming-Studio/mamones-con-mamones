@@ -14,6 +14,12 @@ import { GameData } from "../data/cards.js";
 const HAND_SIZE = 7;
 const CARD_RATIO = 1264 / 848; // alto/ancho de las plantillas (verticales).
 
+// Movimiento reducido (paridad con el online): acorta el giro de la ruleta.
+const REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 // Meta de puntos para ganar, según cantidad de jugadores (igual que el online).
 function metaGanar(n) {
   if (n >= 8) return 4;
@@ -1619,7 +1625,7 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: wheel,
       angle: target,
-      duration: 2600,
+      duration: REDUCED_MOTION ? 200 : 2600,
       ease: "Cubic.easeOut",
       onComplete: () => this.revealRouletteResult(),
     });
