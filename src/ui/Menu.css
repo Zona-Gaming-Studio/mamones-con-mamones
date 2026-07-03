@@ -108,13 +108,14 @@
   align-items: center;
   gap: 14px;
   text-align: left;
-  border-radius: 16px;
-  background: rgba(12, 33, 20, 0.6);
+  border-radius: 12px; /* esquinas claramente rectas, no pill */
+  background: rgba(46, 107, 69, 0.22); /* un pelo más claro que el fieltro, como el prototipo */
+  border-color: rgba(158, 214, 163, 0.22); /* hilo sutil, no borde brillante */
   padding: 17px 18px;
   font-size: 17px;
 }
 .btn--row:hover:not(:disabled) {
-  background: rgba(24, 56, 36, 0.7);
+  background: rgba(46, 107, 69, 0.38);
 }
 .btn__ico {
   flex: none;
