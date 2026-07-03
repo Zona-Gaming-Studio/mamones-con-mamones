@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Menu from "./ui/Menu.jsx";
 import Lobby from "./ui/Lobby.jsx";
-import Admin from "./ui/Admin.jsx";
-import PhaserGame from "./game/PhaserGame.jsx";
 import Splash from "./ui/Splash.jsx";
+import { ensureAuth } from "./lib/supabase.js";
+
+// Code-splitting: Phaser (~1.4 MB) y el panel admin salen del bundle principal.
+// El menú/lobby cargan y responden sin pagar ese peso; el chunk del juego se
+// precalienta en segundo plano (y la PWA lo precachea igual).
+const PhaserGame = lazy(() => import("./game/PhaserGame.jsx"));
+const Admin = lazy(() => import("./ui/Admin.jsx"));
 
 // ¿Se pidió el panel admin? (?admin en la URL). Se conserva el parámetro para
 // que un refresh o la vuelta del OAuth de Google sigan mostrando el panel.
@@ -35,6 +40,15 @@ export default function App() {
   const [splash, setSplash] = useState(!ES_ADMIN);
   const [screen, setScreen] = useState(ES_ADMIN ? "admin" : INVITACION ? "lobby" : "menu");
   const [gameConfig, setGameConfig] = useState(null);
+
+  // Precalentar en el arranque: sesión anónima lista antes de entrar al lobby
+  // (evita el "Iniciando sesión…") y el chunk de Phaser tras el splash.
+  useEffect(() => {
+    if (ES_ADMIN) return;
+    ensureAuth().catch(() => {});
+    const t = setTimeout(() => import("./game/PhaserGame.jsx"), 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   const volverAlMenu = () => {
     setGameConfig(null);
@@ -85,7 +99,13 @@ export default function App() {
 
   return (
     <>
-      {content}
+      <Suspense
+        fallback={
+          <p style={{ margin: "auto", color: "var(--text-muted)", fontWeight: 700 }}>Cargando…</p>
+        }
+      >
+        {content}
+      </Suspense>
       {splash && <Splash onDone={() => setSplash(false)} />}
     </>
   );
