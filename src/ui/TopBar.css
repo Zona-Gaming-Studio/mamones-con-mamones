@@ -1,0 +1,66 @@
+/* Barra superior del prototipo: full-width pegada arriba, respeta el notch. */
+.topbar {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 10px 16px;
+  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    10px calc(16px + env(safe-area-inset-left));
+  background: rgba(10, 27, 17, 0.85);
+  border-bottom: 1px solid var(--panel-border);
+}
+.topbar__inner {
+  width: min(560px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar--narrow .topbar__inner {
+  width: min(440px, 100%);
+}
+.topbar__back {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(12, 33, 20, 0.6);
+  color: var(--text-light);
+  cursor: pointer;
+}
+.topbar__back:active {
+  transform: scale(0.94);
+}
+.topbar__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+}
+.topbar__eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.topbar__title {
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Espaciador del ancho del botón atrás: mantiene el título centrado. */
+.topbar__spacer {
+  flex: none;
+  width: 44px;
+}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ComoJugar from "./ComoJugar.jsx";
 import AcercaDe from "./AcercaDe.jsx";
+import TopBar from "./TopBar.jsx";
 import "./Menu.css";
 
 const PIENSA_RAPIDO_INFO =
@@ -10,7 +11,7 @@ const MODES = [
   {
     id: "clasica",
     name: "Clásica",
-    desc: "El modo de siempre: el Juez elige la carta roja que mejor le pega al adjetivo.",
+    desc: "El modo de siempre: el Juez elige la carta amarilla que mejor le pega al adjetivo.",
   },
   {
     id: "amarga",
@@ -57,10 +58,21 @@ export default function Menu({ onStart, onMultiplayer }) {
 
   return (
     <div className="menu">
+      {step === "create" && (
+        <TopBar
+          onBack={() => setStep("home")}
+          backLabel="Volver al menú"
+          eyebrow="Jugar solo"
+          title="Crear partida"
+        />
+      )}
+      <div className={`menu__scroll ${step === "home" ? "menu__scroll--safetop" : ""}`}>
       <div className="menu__panel">
-        <h1 className="menu__title">
-          <img className="menu__logo" src="/assets/logo.png" alt="Mamones con Mamones" />
-        </h1>
+        {step === "home" && (
+          <h1 className="menu__title">
+            <img className="menu__logo" src="/assets/logo.png" alt="Mamones con Mamones" />
+          </h1>
+        )}
 
         {step === "home" && (
           <div className="menu__buttons">
@@ -159,9 +171,6 @@ export default function Menu({ onStart, onMultiplayer }) {
             </section>
 
             <div className="create__actions">
-              <button className="btn btn--ghost" onClick={() => setStep("home")}>
-                ← Volver
-              </button>
               <button
                 className="btn btn--primary"
                 onClick={() =>
@@ -173,6 +182,7 @@ export default function Menu({ onStart, onMultiplayer }) {
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {showComo && <ComoJugar onClose={() => setShowComo(false)} />}

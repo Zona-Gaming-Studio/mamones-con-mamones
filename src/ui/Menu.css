@@ -2,13 +2,25 @@
   width: 100%;
   height: 100%;
   display: flex;
-  /* Igual que el lobby: scroll si el panel no cabe, centrado con margin:auto. */
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
+}
+
+/* Igual que el lobby: scroll si el panel no cabe, centrado con margin:auto.
+   En el home no hay barra superior, así que absorbe el notch (--safetop). */
+.menu__scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px;
-  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+  padding: 20px calc(20px + env(safe-area-inset-right))
     calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
-  background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
+}
+.menu__scroll--safetop {
+  padding-top: calc(20px + env(safe-area-inset-top));
 }
 
 /* Sin panel contenedor (prototipo): las secciones son cards sueltas sobre el fieltro. */

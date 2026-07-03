@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, ensureAuth } from "../lib/supabase.js";
 import OnlineGame from "./OnlineGame.jsx";
+import TopBar from "./TopBar.jsx";
 import "./Lobby.css";
 
 const MIN_JUGADORES = 4;
@@ -17,30 +18,6 @@ const IcoCheck = () => (
     <path d="M20 6 9 17l-5-5" />
   </svg>
 );
-const IcoAtras = () => (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M15 18l-6-6 6-6" />
-  </svg>
-);
-
-// Barra superior del prototipo: full-width, pegada arriba (respeta el notch),
-// con botón atrás + eyebrow y título centrados.
-function LobbyHeader({ onBack, backLabel, eyebrow, title }) {
-  return (
-    <header className="lhead">
-      <div className="lhead__inner">
-        <button className="lhead__back" onClick={onBack} aria-label={backLabel}>
-          <IcoAtras />
-        </button>
-        <div className="lhead__titles">
-          <span className="lhead__eyebrow">{eyebrow}</span>
-          <span className="lhead__title">{title}</span>
-        </div>
-        <span className="lhead__spacer" aria-hidden="true" />
-      </div>
-    </header>
-  );
-}
 
 export default function Lobby({ onBack, initialCode }) {
   const [uid, setUid] = useState(null);
@@ -282,7 +259,8 @@ export default function Lobby({ onBack, initialCode }) {
     const hostNombre = players.find((p) => p.uid === hostUid)?.nombre;
     return (
       <div className="lobby">
-        <LobbyHeader
+        <TopBar
+          narrow
           onBack={salir}
           backLabel="Salir de la sala"
           eyebrow="Lobby"
@@ -428,7 +406,8 @@ export default function Lobby({ onBack, initialCode }) {
   // ---- Home del lobby ----
   return (
     <div className="lobby">
-      <LobbyHeader
+      <TopBar
+        narrow
         onBack={onBack}
         backLabel="Volver al menú"
         eyebrow="Multijugador"
