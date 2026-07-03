@@ -50,8 +50,8 @@
   color: var(--text-light);
   font-size: 18px;
   font-weight: 700;
-  padding: 14px 18px;
-  border-radius: 14px;
+  padding: 14px 20px;
+  border-radius: 999px; /* pastilla (BRANDKIT §4) */
   cursor: pointer;
   transition: transform 0.08s ease, background 0.15s ease;
 }
@@ -76,6 +76,59 @@
 }
 .btn--ghost {
   background: transparent;
+}
+
+/* Card destacada "Jugar solo" (jerarquía del prototipo: un solo CTA dorado). */
+.menu__solo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+.menu__solo-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 0 4px;
+}
+.menu__solo-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+.menu__solo-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Botones secundarios como fila: icono + texto a la izquierda (prototipo). */
+.btn--row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+.btn__ico {
+  flex: none;
+  opacity: 0.85;
+}
+.btn--row .btn__text {
+  flex: 1;
+}
+.badge-beta {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-light);
+  background: rgba(46, 107, 69, 0.55);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 3px 10px;
 }
 
 /* Crear partida */

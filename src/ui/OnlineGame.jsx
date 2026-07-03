@@ -695,7 +695,8 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
       {/* Mano del jugador */}
       {!esJuez && fase !== "terminado" && (
         <div className="og__hand">
-          <p className="og__handlabel">Tu mano · mantén pulsada una carta para leerla</p>
+          <p className="og__handtab">Tu mano</p>
+          <p className="og__handhint">Mantén pulsada una carta para leerla</p>
           <div className="og__handrow">
             {hand.map((c, i) => {
               const puedeJugar = fase === "jugando" && !yaJugue && !congelado;

@@ -5,6 +5,19 @@ import "./Lobby.css";
 
 const MIN_JUGADORES = 4;
 
+// Iconos SVG inline (trazos de Feather/Lucide, MIT).
+const IcoCopiar = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+const IcoCheck = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
 export default function Lobby({ onBack, initialCode }) {
   const [uid, setUid] = useState(null);
   const [nombre, setNombre] = useState(() => localStorage.getItem("mcm_nombre") || "");
@@ -17,6 +30,7 @@ export default function Lobby({ onBack, initialCode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [codigoCopiado, setCodigoCopiado] = useState(false);
   const channelRef = useRef(null);
   const lastSyncRef = useRef("");
 
@@ -208,6 +222,17 @@ export default function Lobby({ onBack, initialCode }) {
     }
   };
 
+  // Copia solo el código (para dictarlo/pegarlo), aparte del enlace de invitación.
+  const copiarCodigo = async () => {
+    try {
+      await navigator.clipboard.writeText(room.codigo);
+      setCodigoCopiado(true);
+      setTimeout(() => setCodigoCopiado(false), 2000);
+    } catch {
+      /* sin permiso de portapapeles: el código está a la vista igual */
+    }
+  };
+
   const salir = async () => {
     if (room) {
       try {
@@ -233,10 +258,20 @@ export default function Lobby({ onBack, initialCode }) {
     return (
       <div className="lobby">
         <div className="lobby__panel">
-          <p className="lobby__eyebrow">Sala</p>
-          <h1 className="lobby__code">{room.codigo}</h1>
-
-          <div className="lobby__share">
+          {/* Card de código (hero del prototipo): eyebrow + código gigante + copiar + invitar. */}
+          <div className="roomcard">
+            <p className="lobby__eyebrow">Código de sala</p>
+            <div className="roomcard__row">
+              <h1 className="lobby__code">{room.codigo}</h1>
+              <button
+                className="copybtn"
+                onClick={copiarCodigo}
+                title="Copiar código"
+                aria-label={codigoCopiado ? "Código copiado" : "Copiar código"}
+              >
+                {codigoCopiado ? <IcoCheck /> : <IcoCopiar />}
+              </button>
+            </div>
             <button className="btn btn--invite" onClick={compartirInvitacion}>
               {copiado ? "¡Enlace copiado! ✅" : "🔗 Invitar a la sala"}
             </button>
@@ -244,11 +279,17 @@ export default function Lobby({ onBack, initialCode }) {
           </div>
 
           <div className="players">
-            <p className="players__title">Conectados ({players.length})</p>
+            <p className="players__title">
+              Jugadores
+              <span className="players__count">{players.length}</span>
+            </p>
             {players.length === 0 && <p className="players__empty">Conectando…</p>}
             {players.map((p) => (
               <div key={p.uid} className="player">
-                <span className="player__dot" />
+                <span className={`player__avatar ${p.uid === uid ? "player__avatar--yo" : ""}`}>
+                  {(p.nombre || "J").charAt(0).toUpperCase()}
+                  <span className="player__dot" />
+                </span>
                 <span className="player__name">
                   {p.nombre || "Jugador"}
                   {p.uid === uid ? " (tú)" : ""}
@@ -256,9 +297,18 @@ export default function Lobby({ onBack, initialCode }) {
                 {p.uid === hostUid && <span className="player__host">HOST</span>}
               </div>
             ))}
+            {players.length > 0 && players.length < MIN_JUGADORES && (
+              <div className="player player--wait">
+                <span className="player__avatar player__avatar--ghost" aria-hidden="true" />
+                <span className="player__wait">
+                  Esperando jugadores… (faltan {MIN_JUGADORES - players.length})
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="cfg">
+            <p className="cfg__title">Reglas de mesa</p>
             <p className="cfg__label">Modo de juego</p>
             {isHost ? (
               <div className="seg">

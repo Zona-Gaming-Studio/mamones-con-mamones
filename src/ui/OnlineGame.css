@@ -40,8 +40,8 @@
   background: rgba(12, 33, 20, 0.85);
   color: var(--text-light);
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 6px 12px;
+  border-radius: 999px; /* pastilla (BRANDKIT §4) */
+  padding: 6px 14px;
   min-height: 44px; /* área táctil mínima (HIG/WCAG) */
   font-weight: 700;
   cursor: pointer;
@@ -321,7 +321,7 @@
   background: transparent;
   color: var(--text-light);
   border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 999px;
   padding: 12px 22px;
   font-size: 16px;
   font-weight: 700;
@@ -331,12 +331,19 @@
 .og__green {
   margin: 6px 0 4px;
 }
+/* Pastilla de estado (prototipo): instrucción + reloj en una cápsula. */
 .og__banner {
-  margin: 6px 0;
+  margin: 8px 0;
+  width: fit-content;
+  max-width: 100%;
   text-align: center;
-  color: var(--text-muted);
-  font-size: 16px;
+  color: var(--text-light);
+  font-size: 15px;
   font-weight: 700;
+  background: rgba(12, 33, 20, 0.72);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 8px 18px;
 }
 .og__error {
   margin: 0 0 6px;
@@ -344,8 +351,8 @@
   font-size: 14px;
 }
 .og__clock {
-  color: var(--text-muted);
-  font-weight: 700;
+  color: var(--gold);
+  font-weight: 800;
   font-variant-numeric: tabular-nums; /* el ancho no baila al cambiar los dígitos */
 }
 .og__clock--urge {
@@ -387,8 +394,8 @@
   background: var(--gold);
   color: var(--dark);
   border: none;
-  border-radius: 12px;
-  padding: 12px 22px;
+  border-radius: 999px;
+  padding: 12px 26px;
   font-size: 17px;
   font-weight: 800;
   cursor: pointer;
@@ -402,12 +409,26 @@
   margin-top: auto;
   width: 100%;
 }
-.og__handlabel {
-  margin: 4px 0;
+/* Pestaña "Tu mano" sobre el abanico (prototipo). */
+.og__handtab {
+  margin: 4px auto 0;
+  width: fit-content;
+  background: rgba(12, 33, 20, 0.85);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  padding: 5px 16px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.og__handhint {
+  margin: 2px 0;
   text-align: center;
   color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 11px;
 }
 .og__handrow {
   display: flex;

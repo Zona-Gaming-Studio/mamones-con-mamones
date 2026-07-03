@@ -37,14 +37,53 @@
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
-  font-size: 13px;
+  font-size: 12px;
 }
 .lobby__code {
-  margin: 4px 0 6px;
+  margin: 0;
   text-align: center;
-  font-size: clamp(40px, 10vw, 64px);
+  font-size: clamp(40px, 10vw, 60px);
   letter-spacing: 6px;
   color: var(--gold);
+  text-shadow: 0 0 24px rgba(255, 211, 92, 0.35); /* brillo del prototipo */
+}
+
+/* Card del código de sala (hero del prototipo). */
+.roomcard {
+  background: rgba(255, 211, 92, 0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 16px 14px 12px;
+  margin-bottom: 14px;
+}
+.roomcard__row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 2px 0 8px;
+}
+.copybtn {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-light);
+  cursor: pointer;
+}
+.copybtn:active {
+  transform: scale(0.94);
+}
+.roomcard .lobby__hint {
+  margin: 8px 0 0;
+}
+.roomcard .btn--invite {
+  margin-top: 0;
 }
 .lobby__hint {
   margin: 0 0 18px;
@@ -105,8 +144,8 @@
   color: var(--text-light);
   font-size: 17px;
   font-weight: 700;
-  padding: 13px 16px;
-  border-radius: 14px;
+  padding: 13px 18px;
+  border-radius: 999px; /* pastilla (BRANDKIT §4) */
   cursor: pointer;
   margin-top: 4px;
 }
@@ -188,9 +227,23 @@
 }
 .players__title {
   margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   color: var(--text-muted);
+}
+.players__count {
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--gold);
+  background: rgba(255, 211, 92, 0.12);
+  border: 1px solid rgba(255, 211, 92, 0.4);
+  border-radius: 999px;
+  padding: 1px 9px;
 }
 .players__empty {
   margin: 0;
@@ -201,15 +254,56 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  padding: 5px 0;
+}
+/* Avatar con inicial (prototipo): el propio dorado, el resto verde. */
+.player__avatar {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  color: var(--text-light);
+  font-size: 15px;
+  font-weight: 800;
+}
+.player__avatar--yo {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--dark);
+}
+.player__avatar--ghost {
+  background: transparent;
+  border-style: dashed;
 }
 .player__dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: #57d977;
+  border: 2px solid var(--panel);
   box-shadow: 0 0 8px rgba(87, 217, 119, 0.7);
   flex: none;
+}
+/* Slot punteado "esperando jugador" (prototipo). */
+.player--wait {
+  border: 1px dashed var(--panel-border);
+  border-radius: 12px;
+  padding: 5px 8px;
+  margin-top: 6px;
+}
+.player__wait {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--text-muted);
 }
 .player__name {
   font-size: 16px;
@@ -229,10 +323,22 @@
   margin-top: 16px;
 }
 
-/* Configuración de la sala (modo + piensa rápido) */
+/* Configuración de la sala (modo + piensa rápido), como card "Reglas de mesa". */
 .cfg {
   margin: 14px 0;
   text-align: left;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+.cfg__title {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 .cfg__label {
   margin: 0 0 8px;
