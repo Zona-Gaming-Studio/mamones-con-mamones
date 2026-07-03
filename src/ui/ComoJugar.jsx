@@ -22,7 +22,7 @@ export default function ComoJugar({ onClose }) {
         <section className="como__sec">
           <h3>🎯 Objetivo</h3>
           <p>
-            Cada ronda hay un <b>adjetivo verde</b> y tú juegas la <b>carta roja</b> (un sustantivo o
+            Cada ronda hay un <b>adjetivo verde</b> y tú juegas la <b>carta amarilla</b> (un sustantivo o
             frase) que mejor le pegue. El <b>Juez</b> de la ronda elige la ganadora. Gana quien
             primero llegue a la meta de puntos.
           </p>
@@ -32,7 +32,7 @@ export default function ComoJugar({ onClose }) {
           <h3>🔄 La ronda</h3>
           <ol>
             <li>Se revela una carta <b>verde</b> (el adjetivo).</li>
-            <li>Todos menos el Juez juegan una carta <b>roja</b> de su mano.</li>
+            <li>Todos menos el Juez juegan una carta <b>amarilla</b> de su mano.</li>
             <li>El <b>Juez</b> lee las jugadas (anónimas) y elige la mejor.</li>
             <li>El ganador suma un punto, se reponen las manos y el Juez rota.</li>
           </ol>
