@@ -23,18 +23,21 @@ const IcoAtras = () => (
   </svg>
 );
 
-// Header del prototipo: botón atrás + eyebrow y título centrados.
+// Barra superior del prototipo: full-width, pegada arriba (respeta el notch),
+// con botón atrás + eyebrow y título centrados.
 function LobbyHeader({ onBack, backLabel, eyebrow, title }) {
   return (
     <header className="lhead">
-      <button className="lhead__back" onClick={onBack} aria-label={backLabel}>
-        <IcoAtras />
-      </button>
-      <div className="lhead__titles">
-        <span className="lhead__eyebrow">{eyebrow}</span>
-        <span className="lhead__title">{title}</span>
+      <div className="lhead__inner">
+        <button className="lhead__back" onClick={onBack} aria-label={backLabel}>
+          <IcoAtras />
+        </button>
+        <div className="lhead__titles">
+          <span className="lhead__eyebrow">{eyebrow}</span>
+          <span className="lhead__title">{title}</span>
+        </div>
+        <span className="lhead__spacer" aria-hidden="true" />
       </div>
-      <span className="lhead__spacer" aria-hidden="true" />
     </header>
   );
 }
@@ -279,14 +282,14 @@ export default function Lobby({ onBack, initialCode }) {
     const hostNombre = players.find((p) => p.uid === hostUid)?.nombre;
     return (
       <div className="lobby">
+        <LobbyHeader
+          onBack={salir}
+          backLabel="Salir de la sala"
+          eyebrow="Lobby"
+          title={hostNombre ? `Sala de ${hostNombre}` : `Sala ${room.codigo}`}
+        />
+        <div className="lobby__scroll">
         <div className="lobby__panel">
-          <LobbyHeader
-            onBack={salir}
-            backLabel="Salir de la sala"
-            eyebrow="Lobby"
-            title={hostNombre ? `Sala de ${hostNombre}` : `Sala ${room.codigo}`}
-          />
-
           {/* Card de código (hero del prototipo): eyebrow + código gigante + copiar + invitar. */}
           <div className="roomcard">
             <p className="lobby__eyebrow">Código de sala</p>
@@ -417,6 +420,7 @@ export default function Lobby({ onBack, initialCode }) {
 
           {error && <p className="lobby__error">{error}</p>}
         </div>
+        </div>
       </div>
     );
   }
@@ -424,14 +428,14 @@ export default function Lobby({ onBack, initialCode }) {
   // ---- Home del lobby ----
   return (
     <div className="lobby">
+      <LobbyHeader
+        onBack={onBack}
+        backLabel="Volver al menú"
+        eyebrow="Multijugador"
+        title="Jugar en línea"
+      />
+      <div className="lobby__scroll">
       <div className="lobby__panel">
-        <LobbyHeader
-          onBack={onBack}
-          backLabel="Volver al menú"
-          eyebrow="Multijugador"
-          title="Jugar en línea"
-        />
-
         {initialCode && (
           <p className="lobby__invite">
             Te invitaron a la sala <strong>{initialCode}</strong>. Escribe tu nombre y únete 👇
@@ -477,6 +481,7 @@ export default function Lobby({ onBack, initialCode }) {
 
         {error && <p className="lobby__error">{error}</p>}
         {!uid && !error && <p className="lobby__hint">Iniciando sesión…</p>}
+      </div>
       </div>
     </div>
   );

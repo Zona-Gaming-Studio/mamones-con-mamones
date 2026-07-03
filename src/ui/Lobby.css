@@ -2,15 +2,23 @@
   width: 100%;
   height: 100%;
   display: flex;
-  /* Scroll cuando el panel es más alto que la pantalla (móvil).
-     Centramos el panel con margin:auto: queda centrado si cabe y scrollea
-     desde arriba si no (align-items:center recortaría la parte de arriba). */
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
+}
+
+/* Área de contenido bajo la barra. Scroll cuando el panel es más alto que la
+   pantalla (móvil); el panel se centra con margin:auto (queda centrado si cabe
+   y scrollea desde arriba si no). */
+.lobby__scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px;
-  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+  padding: 20px calc(20px + env(safe-area-inset-right))
     calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
-  background: radial-gradient(circle at 50% 35%, var(--felt-top), var(--felt-bottom));
 }
 
 /* Sin panel contenedor (prototipo): las secciones son cards sueltas sobre el fieltro. */
@@ -19,12 +27,22 @@
   margin: auto;
 }
 
-/* Header del prototipo: atrás + eyebrow y título centrados. */
+/* Barra superior del prototipo: full-width pegada arriba, respeta el notch. */
 .lhead {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 10px 16px;
+  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    10px calc(16px + env(safe-area-inset-left));
+  background: rgba(10, 27, 17, 0.85);
+  border-bottom: 1px solid var(--panel-border);
+}
+.lhead__inner {
+  width: min(440px, 100%);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
 }
 .lhead__back {
   flex: none;
