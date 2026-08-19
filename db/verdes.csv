@@ -1,51 +1,451 @@
 tipo,texto,flavor
-Jerga,Arrecho,"Buenísimo o bravísimo, según el día"
-Jerga,Chévere,"Sello criollo de aprobación"
-Jerga,Chimbo,"De pacotilla, pues"
-Jerga,Pavoso,"Trae la sal pegada"
-Jerga,Ladilla,"Fastidioso de oficio"
-Jerga,Sifrino,"Fresa con acento gringo"
-Jerga,Rascado,"Más prendido que un bombillo"
-Jerga,Tieso,"Sin un medio... o sin moverse"
-Jerga,Burda de bueno,"Demasiado, del bueno"
-Jerga,Jalabola,"Adulador profesional"
-Jerga,Echao pa' lante,"No se arruga"
-Jerga,Pelando bola,"Sin plata y sin oficio"
-Jerga,Camburao,"Acomodado por palanca"
-Jerga,Enratonado,"El día después de la juma"
-Jerga,Fino,"Todo en orden, pana"
-Jerga,Mamador de gallo,"Vive echando broma"
-Jerga,Bochinchero,"Arma el peo donde llega"
-Jerga,Aguevoneado,"Despistado nivel experto"
-Jerga,Sabroso,"Rico, como debe ser"
-Jerga,Cuaima,"Celosa con doctorado"
-Jerga,Arrechísimo,"Arrecho al cubo"
-Jerga,Chimbísimo,"Lo peor de lo peor"
-Jerga,Heavy,"Pesado y fuerte"
-Jerga,Maluco,"Tirando a feo"
-Jerga,Bravo,"Molesto y con razón"
-Jerga,Picado,"Resentido, pero disimula"
-Jerga,Templao,"Enamorado hasta los tuétanos"
-Jerga,Flechao,"Cupido le dio sin piedad"
-Jerga,Mosca,"No le pasan gato por liebre"
-Jerga,Avispao,"Vivo, pilas, despierto"
-Jerga,Brutal,"Tan bueno que asusta"
-Jerga,Pelúo,"Difícil, complicado"
-Jerga,Enrollao,"Hecho un lío"
-Jerga,Embarrao,"Metido en tremendo peo"
-Jerga,Salao,"La mala suerte lo persigue"
-Jerga,Echón,"Presumido sin razón"
-Jerga,Fanfarrón,"Habla más de lo que hace"
-Jerga,Tripeao,"Disfrutando a millón"
-Jerga,Mamao,"Cansado, no puede más"
-Jerga,Fundío,"Acabado, rendido"
-Jerga,Quedao,"Lento hasta para el amor"
-Jerga,Cuadrao,"Cerrado de mente"
-Jerga,Pesao,"Antipático de nacimiento"
-Jerga,Misio,"Sin un centavo"
-Jerga,Tóxico,"Mejor lejos"
-Jerga,Intenso,"Demasiado, siempre"
-Jerga,Zumbao,"Loco de bola"
-Jerga,Despelucao,"Recién levantado"
-Jerga,Fiebrúo,"Obsesionado con su vaina"
-Jerga,Guapetón,"Se las da de valiente"
+Jerga,"Arrecho","Bravo
+Furioso
+Encendido"
+Jerga,"Chévere","Bueno
+Bacano
+Genial"
+Jerga,"Chimbo","Malo
+Corriente
+Falso"
+Jerga,"Pavoso","Salado
+Yeta
+Desgraciado"
+Jerga,"Ladilla","Fastidioso
+Cansón
+Molestón"
+Jerga,"Sifrino","Fresa
+Presumido
+Refinado"
+Jerga,"Rascado","Borracho
+Prendido
+Ebrio"
+Jerga,"Tieso","Rígido
+Duro
+Firme"
+Jerga,"Burda e' bueno","Buenísimo
+Excelente
+Brutal"
+Jerga,"Jalabola","Adulador
+Zalamero
+Lambón"
+Jerga,"Echao pa' lante","Valiente
+Emprendedor
+Decidido"
+Jerga,"Pelando bola","Desocupado
+Misio
+Ocioso"
+Jerga,"Camburao","Acomodado
+Enchufado
+Palanqueado"
+Jerga,"Enratonado","Resacado
+Guayabo
+Crudo"
+Jerga,"Fino","Bien
+Genial
+Bacano"
+Jerga,"Mamador de gallo","Bromista
+Guasón
+Cachondo"
+Jerga,"Bochinchero","Alborotador
+Escandaloso
+Peleón"
+Jerga,"Aguevoniao'","Distraído
+Atontado
+Embobado"
+Jerga,"Sabroso","Rico
+Delicioso
+Gustoso"
+Jerga,"Cuaima","Celosa
+Posesiva
+Controladora"
+Jerga,"Arrechísimo","Buenísimo
+Excelente
+Espectacular"
+Jerga,"Chimbísimo","Pésimo
+Malísimo
+Horrible"
+Jerga,"Heavy","Pesado
+Fuerte
+Intenso"
+Jerga,"Maluco","Feo
+Desagradable
+Malo"
+Jerga,"Bravo","Molesto
+Enojado
+Furioso"
+Jerga,"Picado","Resentido
+Ofendido
+Dolido"
+Jerga,"Templao'","Suertudo
+Afortunado
+Bendecido"
+Jerga,"Flechao","Enamorado
+Hechizado
+Encantado"
+Jerga,"Mosca","Alerta
+Atento
+Pendiente"
+Jerga,"Avispao","Vivo
+Listo
+Despierto"
+Jerga,"Brutal","Increíble
+Espectacular
+Bestial"
+Jerga,"Pelúo'","Difícil
+Complicado
+Enredado"
+Jerga,"Enrollao","Liado
+Complicado
+Confundido"
+Jerga,"Embarrao'","Metido
+Enredado
+Comprometido"
+Jerga,"Salao'","Desgraciado
+Pavoso
+Yeta"
+Jerga,"Echón","Presumido
+Fanfarrón
+Creído"
+Jerga,"Fanfarrón","Presumido
+Jactancioso
+Echón"
+Jerga,"Tripeao'","Disfrutando
+Gozando
+Encantado"
+Jerga,"Mamao'","Cansado
+Agotado
+Rendido"
+Jerga,"Fundío'","Acabado
+Arruinado
+Molido"
+Jerga,"Quedao'","Lento
+Tímido
+Despistado"
+Jerga,"Cuadrao'","Terco
+Rígido
+Cerrado"
+Jerga,"Pesao'","Antipático
+Fastidioso
+Cargante"
+Jerga,"Emperifollao'","Elegante
+Arreglado
+Buenmozo"
+Jerga,"Tóxico","Dañino
+Venenoso
+Nocivo"
+Jerga,"Intenso","Exagerado
+Fuerte
+Extremo"
+Jerga,"Zumbao'","Loco
+Chiflado
+Ido"
+Jerga,"Despelucao'","Desgreñado
+Despeinado
+Alborotado"
+Jerga,"Fiebrúo'","Obsesionado
+Fanático
+Apasionado"
+Jerga,"Guapetón","Valentón
+Bravucón
+Fanfarrón"
+Jerga,"Jarto","Harto
+Fastidiado
+Cansado"
+Jerga,"Prendío'","Alegre
+Achispado
+Encendido"
+Jerga,"Pelao'","Rapado
+Calvo
+Mocho"
+Jerga,"Sudao'","Empapado
+Mojado
+Chorreao"
+Jerga,"Verraco","Furioso
+Bravo
+Enardecido"
+Jerga,"Full","Lleno
+Repleto
+Ocupado"
+Jerga,"Choreto","Torcido
+Chueco
+Ladeado"
+Jerga,"Cabezón","Terco
+Testarudo
+Porfiado"
+Jerga,"Mamalón","Ocioso
+Flojo
+Haragán"
+Jerga,"Pichirre","Tacaño
+Codo
+Agarrado"
+Jerga,"Encaletao'","Escondido
+Guardado
+Oculto"
+Jerga,"Empatao'","Comprometido
+Enganchado
+Amarrado"
+Jerga,"Mamadisimo","Fornido
+Musculoso
+Fortachón"
+Jerga,"Gafo","Tonto
+Bobo
+Menso"
+Jerga,"Fajao'","Esforzado
+Dedicado
+Trabajador"
+Jerga,"Rendío'","Agotado
+Exhausto
+Molido"
+Jerga,"Trancao'","Bloqueado
+Atascado
+Trabado"
+Jerga,"Ñoño","Aburrido
+Soso
+Serio"
+Jerga,"Cuchi","Lindo
+Bonito
+Precioso"
+Jerga,"Fufurufo","Elegante
+Emperifollado
+Producido"
+Jerga,"Jodío'","Difícil
+Complicado
+Enredado"
+Jerga,"Roñoso","Sucio
+Mugroso
+Cochino"
+Jerga,"Guisero","Aprovechador
+Ventajista
+Buscón"
+Jerga,"Ladillao'","Fastidiado
+Hastiado
+Aburrido"
+Jerga,"Espabilao'","Despierto
+Vivo
+Listo"
+Jerga,"Mojonero","Mentiroso
+Liador
+Labioso"
+Jerga,"Achantao'","Desanimado
+Decaído
+Aplatanado"
+Jerga,"Aplatanado","Flojo
+Relajado
+Acomodado"
+Jerga,"Guillao'","Creído
+Fantoche
+Vanidoso"
+Jerga,"Fantoche","Presumido
+Vanidoso
+Creído"
+Jerga,"Vacilón","Divertido
+Gracioso
+Chistoso"
+Jerga,"Jodedor","Bromista
+Molestón
+Fastidioso"
+Jerga,"Sinvergüenza","Descarado
+Fresco
+Caradura"
+Jerga,"Mamón","Fastidioso
+Cansón
+Latoso"
+Jerga,"Rochelero","Desordenado
+Alborotador
+Inquieto"
+Jerga,"Chalequeao'","Molestado
+Burlado
+Vacilado"
+Jerga,"Guabinoso","Escurridizo
+Resbaloso
+Evasivo"
+Jerga,"Amuñuñao'","Apretado
+Amontonado
+Apiñado"
+Jerga,"Enguayabao'","Nostálgico
+Deprimido
+Melancólico"
+Jerga,"Encaramao'","Trepado
+Subido
+Montado"
+Jerga,"Emperrao'","Empeñado
+Obstinado
+Terco"
+Jerga,"Chambón","Torpe
+Chapucero
+Descuidado"
+Jerga,"Zoquete","Bruto
+Torpe
+Tarugo"
+Jerga,"Metío'","Entrometido
+Curioso
+Salío'"
+Jerga,"Bonchón","Fiestero
+Rumbero
+Parrandero"
+Jerga,"Alzao'","Rebelde
+Insolente
+Respondón"
+Jerga,"Espeso","Denso
+Aburrido
+Cargante"
+Jerga,"Pinchao'","Ponchado
+Desinflado
+Reventado"
+Jerga,"Descachalandrao","Desaliñado
+Fachoso
+Desarreglado"
+Jerga,"Chorreao'","Manchado
+Embarrado
+Asustado"
+Jerga,"Amargao'","Resentido
+Agrio
+Malhumorado"
+Jerga,"Fresco","Descarado
+Relajado
+Caradura"
+Jerga,"Enfogonao'","Furioso
+Encendido
+Molesto"
+Jerga,"Apurao'","Apresurado
+Acelerado
+Volao"
+Jerga,"Cachaciento","Lento
+Parsimonioso
+Pausado"
+Jerga,"Bullero","Ruidoso
+Escandaloso
+Estridente"
+Jerga,"Baboso","Empalagoso
+Meloso
+Zalamero"
+Jerga,"Migajero","Adulador
+Meloso
+Lisonjero"
+Jerga,"Embustero","Mentiroso
+Falso
+Cuentero"
+Jerga,"Cuentero","Fabulador
+Charlatán
+Exagerado"
+Jerga,"Necio","Terco
+Testarudo
+Obstinado"
+Jerga,"Bragao'","Valiente
+Aguerrido
+Decidido"
+Jerga,"Aguerrido","Valiente
+Combativo
+Fiero"
+Jerga,"Nervioso","Inquieto
+Ansioso
+Alterado"
+Jerga,"Relajao'","Tranquilo
+Sereno
+Suave"
+Jerga,"Rabioso","Furioso
+Iracundo
+Colérico"
+Jerga,"Empalagoso","Meloso
+Dulzón
+Cansón"
+Jerga,"Grasoso","Aceitoso
+Mantecoso
+Untuoso"
+Jerga,"Reseco","Árido
+Seco
+Deshidratado"
+Jerga,"Aguao'","Insípido
+Diluido
+Soso"
+Jerga,"Soso","Insípido
+Desabrido
+Simple"
+Jerga,"Picante","Ardiente
+Enchilado
+Fuerte"
+Jerga,"Baratón","Barato
+Económico
+De feria"
+Jerga,"Costoso","Caro
+Salado
+Empinado"
+Jerga,"Enano","Bajito
+Chaparro
+Pequeño"
+Jerga,"Gigante","Enorme
+Descomunal
+Grandote"
+Jerga,"Flaco","Delgado
+Escuálido
+Fideo"
+Jerga,"Gordo","Robusto
+Rechoncho
+Llenito"
+Jerga,"Feo","Espantoso
+Horrible
+Maluco"
+Jerga,"Bello","Hermoso
+Precioso
+Divino"
+Jerga,"Viejo","Anciano
+Antiguo
+Carroza"
+Jerga,"Nuevo","Reciente
+Estrenado
+Flamante"
+Jerga,"Pispo","Pulcro
+Elegante
+Arreglado"
+Jerga,"Fofo","Blando
+Flácido
+Aguado"
+Jerga,"Zampao'","Metido
+Colado
+Entrado"
+Jerga,"Mojoso","Húmedo
+Empapado
+Aguado"
+Jerga,"Frío","Distante
+Indiferente
+Seco"
+Jerga,"Caliente","Bravo
+Encendido
+Molesto"
+Jerga,"Ranchero","Corriente
+Ordinario
+Vulgar"
+Jerga,"Zumbón","Burlón
+Guasón
+Bromista"
+Jerga,"Cuántico","Impredecible
+Fantasmal
+Superpuesto"
+Jerga,"Aerodinámico","Veloz
+Resbaloso
+Fugaz"
+Jerga,"Termonuclear","Explosivo
+Intenso
+Devastador"
+Jerga,"Biodegradable","Efímero
+Perecedero
+Descartable"
+Jerga,"Inalámbrico","Libre
+Suelto
+Desconectado"
+Jerga,"Retroactivo","Tardío
+Vencido
+Atrasado"
+Jerga,"Multivitamínico","Completo
+Reforzado
+Nutritivo"
+Jerga,"Recargable","Renovable
+Reutilizable
+Duradero"
+Jerga,"Antártico","Congelado
+Gélido
+Polar"
+Jerga,"Panorámico","Amplio
+Extenso
+Abarcador"
