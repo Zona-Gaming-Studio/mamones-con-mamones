@@ -1,4 +1,6 @@
-// Genera el seed SQL de cartas para Supabase a partir de los CSV del Sheet.
+// Genera el seed SQL de cartas para Supabase (online) y el cartas.json del
+// juego local (1-jugador) a partir de los CSV del Sheet — ambos de la misma
+// fuente, para que el mazo sea idéntico en línea y en local.
 //
 // Dos mazos:
 //   - ROJA  (respuestas, lo que se juega): cartas.csv  -> TODO se trata como Roja.
@@ -106,7 +108,17 @@ on conflict (color, texto) do update
 
 writeFileSync(OUT_PATH, sql);
 
+// --- Emitir JSON para el juego local (mismos textos que el seed online) ---
+// El modo 1-jugador (Phaser) lee src/game/data/cartas.json y solo usa `texto`.
+// Se regenera desde la MISMA fuente que el seed para que local == online.
+const json = {
+  verdes: cards.filter((c) => c.color === "verde").map((c) => c.texto),
+  rojas: cards.filter((c) => c.color === "roja").map((c) => c.texto),
+};
+writeFileSync(JSON_PATH, JSON.stringify(json, null, 2) + "\n");
+
 const verdes = cards.filter((c) => c.color === "verde").length;
 const rojas = cards.length - verdes;
 console.log(`Cartas: ${cards.length}  (verdes/prompt: ${verdes}, rojas/respuesta: ${rojas})`);
 console.log(`Sin flavor: ${sinFlavor}`);
+console.log(`JSON local: ${JSON_PATH} (${verdes} verdes, ${rojas} rojas)`);
