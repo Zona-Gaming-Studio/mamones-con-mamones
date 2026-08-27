@@ -1,5 +1,7 @@
 # Migración a Cloudflare — plan detallado
 
+> **Estado (2026-08-27):** Fase 0 ✅ · Fase 1 ✅ (motor en `src/rules/`, 64 tests en verde, `bun run test`) · **siguiente: Fase 2 (Worker + SalaDO)**.
+
 Objetivo: **descartar Supabase por completo** y mover el multijugador a **Cloudflare Workers + Durable Objects + D1**, en la misma cuenta/worker donde ya se despliega el front. Documento de trabajo para ejecutar la migración por fases; cada fase deja el repo en estado consistente.
 
 **Referencia clave: `~/projects/distrito-game`** — mismo autor, mismo género (juego de cartas multijugador por rondas), **ya migrado de Supabase a esta misma arquitectura**. Gran parte del esqueleto se copia de ahí (rutas exactas en §7).
