@@ -10,6 +10,17 @@
   },
   // Historial de migraciones del DO: las entradas nunca se editan, solo se añaden.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalaDO"] }],
+  // D1: lo único que cruza salas — auth (Better Auth), roles y el catálogo de
+  // cartas. Esquema versionado en server/migrations/ (wrangler d1 migrations),
+  // aplicado ANTES de cada deploy. El bucle de ronda del DO nunca toca D1.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mamones-db",
+      "database_id": "e4312346-7f6b-47cf-9c3a-11ce116edeb3",
+      "migrations_dir": "server/migrations"
+    }
+  ],
   "observability": { "enabled": true },
   // El front (Vite → dist/) se sirve como assets desde este mismo Worker; /api/*
   // y /salas/* van siempre al Worker (API + WebSocket del multijugador).
@@ -25,6 +36,14 @@
       "durable_objects": {
         "bindings": [{ "name": "SALA", "class_name": "SalaDO" }]
       },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mamones-db-staging",
+          "database_id": "214a1f54-d6ce-4a79-9019-10f1d26d8865",
+          "migrations_dir": "server/migrations"
+        }
+      ],
       "observability": { "enabled": true },
       "assets": {
         "directory": "./dist",

@@ -108,6 +108,27 @@ on conflict (color, texto) do update
 
 writeFileSync(OUT_PATH, sql);
 
+// --- Emitir seed para D1 (server/migrations/) ---
+// Mismo mazo en dialecto SQLite. Las migraciones D1 se aplican UNA vez: este
+// archivo solo puede regenerarse mientras no se haya aplicado; después, los
+// cambios de mazo van por el panel admin (D1 es la fuente viva) o en una
+// migración nueva.
+const D1_OUT = "server/migrations/0003_seed_cartas.sql";
+// D1 limita cada statement a ~100KB: el insert va en lotes de 100 filas.
+const lotes = [];
+for (let i = 0; i < cards.length; i += 100) {
+  lotes.push(`insert into cartas (color, tipo, texto, flavor) values
+${cards.slice(i, i + 100).map(val).join(",\n")}
+on conflict (color, texto) do update
+  set tipo = excluded.tipo, flavor = excluded.flavor, activa = 1;`);
+}
+const d1Sql = `-- 0003_seed_cartas.sql — GENERADO con: bun scripts/gen-cartas.mjs
+-- Mazo inicial (${cards.length} cartas). Tras aplicarse, el mazo vivo se edita en D1
+-- vía el panel admin; los CSV/JSON del repo quedan como fuente de siembra y respaldo.
+${lotes.join("\n\n")}
+`;
+writeFileSync(D1_OUT, d1Sql);
+
 // --- Emitir JSON para el juego local (mismos textos que el seed online) ---
 // El modo 1-jugador (Phaser) lee src/game/data/cartas.json y solo usa `texto`.
 // Se regenera desde la MISMA fuente que el seed para que local == online.

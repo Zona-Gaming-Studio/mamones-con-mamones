@@ -33,9 +33,9 @@ import {
   unirseSala,
 } from "../src/rules/index.js";
 import { ACCIONES_WS, EFIMEROS_WS } from "../src/net/protocol.js";
-// Mazo empaquetado (el mismo de PR #2, idéntico al del single-player). En la
-// Fase 3/5 pasa a leerse de D1 (edición en vivo desde el panel admin) con este
-// JSON como fallback.
+// Mazo de respaldo empaquetado (el mismo de PR #2, idéntico al del
+// single-player). El mazo vivo se lee de D1 al iniciar cada partida (edición
+// en vivo desde el panel admin); si D1 está vacía o coja, se cae a este JSON.
 import mazoBase from "../src/game/data/cartas.json";
 
 const ESTADO_KEY = "estado";
@@ -60,6 +60,26 @@ export class SalaDO extends DurableObject<Env> {
 
   private reglasCtx() {
     return { now: () => Date.now(), rng: Math.random };
+  }
+
+  /**
+   * El mazo activo desde D1, congelado en el estado por `iniciarPartida` para
+   * el resto de la partida (el bucle de ronda nunca vuelve a tocar D1). Si D1
+   * no da un mazo jugable (sin seed, error), cae al JSON empaquetado.
+   */
+  private async mazoActivo(): Promise<{ rojas: string[]; verdes: string[] }> {
+    try {
+      const { results } = await this.env.DB.prepare(
+        "select color, texto from cartas where activa = 1"
+      ).all<{ color: string; texto: string }>();
+      const rojas = results.filter((r) => r.color === "roja").map((r) => r.texto);
+      const verdes = results.filter((r) => r.color === "verde").map((r) => r.texto);
+      // Mínimo jugable: manos de 7 para 10 jugadores + verdes de sobra.
+      if (rojas.length >= 70 && verdes.length >= 10) return { rojas, verdes };
+    } catch {
+      /* D1 caída o sin esquema: usar el respaldo */
+    }
+    return mazoBase;
   }
 
   /** Tras cada mutación: persistir, sincronizar la alarm con faseHasta y difundir. */
@@ -194,7 +214,7 @@ export class SalaDO extends DurableObject<Env> {
     if (ACCIONES_WS.includes(msg.t)) {
       try {
         const accion = { ...msg, tipo: msg.t, uid };
-        if (msg.t === "iniciar") (accion as Record<string, unknown>).mazo = mazoBase;
+        if (msg.t === "iniciar") (accion as Record<string, unknown>).mazo = await this.mazoActivo();
         aplicar(this.estado, accion, this.reglasCtx());
       } catch (e) {
         if (e instanceof ReglaError) return this.enviarError(ws, e.message);
@@ -252,7 +272,7 @@ export class SalaDO extends DurableObject<Env> {
     if (!this.estado) return { ok: false, error: "Sala no encontrada" };
     try {
       const completa = { ...accion, uid };
-      if (accion.tipo === "iniciar" && !completa.mazo) completa.mazo = mazoBase;
+      if (accion.tipo === "iniciar" && !completa.mazo) completa.mazo = await this.mazoActivo();
       aplicar(this.estado, completa, this.reglasCtx());
     } catch (e) {
       if (e instanceof ReglaError) return { ok: false, error: e.message };
