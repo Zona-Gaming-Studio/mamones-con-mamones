@@ -2,7 +2,7 @@
 
 > **Estado (2026-08-27):** Fase 0 ✅ · Fase 1 ✅ (motor en `src/rules/`, 64 tests) · Fase 2 ✅ (Worker `server/index.ts` + `SalaDO` con hibernation/alarms, 15 tests en workerd; identidad aún por stub `x-mcm-uid`) · **siguiente: Fase 3 (Better Auth + D1)**.
 >
-> ⚠️ **Deploy:** prod es el proyecto **Pages** `mamones-con-mamones` (no un Worker) y quedó **congelado en `c616d71`** — su integración GitHub se rompió al migrar el repo a la org. El Worker nuevo aún no está desplegado (falta `bunx wrangler deploy` manual o reconectar CI). Ver Fase 6 para la decisión de URL.
+> **Deploy:** el Worker está **desplegado y verificado** en `https://mamones-con-mamones.sergebruni.workers.dev` (smoke test e2e: sala + 4 WebSockets + ronda completa + auto-borrado ✅; deploy manual `bunx wrangler deploy`, CI llega en Fase 5). Prod real sigue siendo el proyecto **Pages** `mamones-con-mamones` (`…pages.dev`), **congelado en `c616d71`** — su integración GitHub se rompió al migrar el repo a la org; reconectar en el dashboard si se quiere descongelar antes del corte. Ver Fase 6 para la decisión de URL.
 
 Objetivo: **descartar Supabase por completo** y mover el multijugador a **Cloudflare Workers + Durable Objects + D1**, en la misma cuenta/worker donde ya se despliega el front. Documento de trabajo para ejecutar la migración por fases; cada fase deja el repo en estado consistente.
 
