@@ -1,6 +1,8 @@
 # Migración a Cloudflare — plan detallado
 
 > **Estado (2026-08-27):** Fase 0 ✅ · Fase 1 ✅ (motor en `src/rules/`, 64 tests) · Fase 2 ✅ (Worker `server/index.ts` + `SalaDO` con hibernation/alarms, 15 tests en workerd; identidad aún por stub `x-mcm-uid`) · **siguiente: Fase 3 (Better Auth + D1)**.
+>
+> ⚠️ **Deploy:** prod es el proyecto **Pages** `mamones-con-mamones` (no un Worker) y quedó **congelado en `c616d71`** — su integración GitHub se rompió al migrar el repo a la org. El Worker nuevo aún no está desplegado (falta `bunx wrangler deploy` manual o reconectar CI). Ver Fase 6 para la decisión de URL.
 
 Objetivo: **descartar Supabase por completo** y mover el multijugador a **Cloudflare Workers + Durable Objects + D1**, en la misma cuenta/worker donde ya se despliega el front. Documento de trabajo para ejecutar la migración por fases; cada fase deja el repo en estado consistente.
 
@@ -129,14 +131,21 @@ Distribución (fuente de verdad del comportamiento: el inventario SQL — ver §
 6. `Admin.jsx`: login Better Auth (Google/email) + fetch a `/api/admin/cartas`; el CRUD, filtros y CSV import/export se conservan (cambia el transporte, no la pantalla).
 
 ### Fase 5 — CI, staging y playtest (1 sesión)
-1. Workflows de distrito: `ci.yml` (PRs: lint + test) y `deploy.yml` (push a master: test → `d1 migrations apply --remote` → build front → `wrangler deploy`; si la migración falla no se despliega). Secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`. **Desactivar el auto-deploy actual de Workers Builds** para no tener dos deployers.
+1. Workflows de distrito: `ci.yml` (PRs: lint + test) y `deploy.yml` (push a master: test → `d1 migrations apply --remote` → build front → `wrangler deploy`; si la migración falla no se despliega). Secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`.
 2. Deploy a `env.staging` y playtest real: 4+ teléfonos, partida completa en clásica y amarga, con Piensa Rápido, con caídas de red a mitad de ronda (matar la app, cambiar de WiFi a datos), juez desconectado, revancha.
 3. Criterio de corte: una partida completa sin tocar el código y sin estados colgados.
 
-### Fase 6 — Corte (½ sesión)
-1. Deploy a producción. **No hay migración de datos**: las salas son efímeras y el mazo ya está en D1/git. Se pierden (aceptado): cuentas admin de Supabase (re-registro + re-bootstrap del primer admin vía SQL en D1) y nada más.
-2. **Gotcha PWA**: el SW cachea el bundle viejo (que habla con Supabase). Mantener el proyecto Supabase **vivo pero intocado ~1 semana** para los clientes rezagados; el autoUpdate del SW los va trayendo.
-3. Bootstrap admin: `INSERT INTO user_roles (user_id, role) ...` vía `wrangler d1 execute`.
+### Fase 6 — Corte (½ sesión + decisión de URL)
+**Realidad del deploy (descubierta 2026-08-27):** producción NO es un Worker sino el proyecto **Cloudflare Pages** `mamones-con-mamones` (URL pública `mamones-con-mamones.pages.dev`, sin dominio propio), y su integración GitHub **se rompió con la migración del repo a la org**: el último build es `c616d71` (pre-migración). Pages no puede alojar Durable Objects, así que el Worker es un deployment aparte y el corte incluye mover el tráfico. Opciones de URL (decidir antes del corte):
+   - **(a) URL nueva** (`mamones-con-mamones.sergebruni.workers.dev`): lo más simple; las PWA instaladas apuntando a pages.dev mueren y hay que re-anunciar el enlace.
+   - **(b) Front en Pages + Worker solo como API/WS** (cross-origin con CORS): conserva la URL; a cambio quedan dos deployments para siempre.
+   - **(c) Dominio propio sobre el Worker** (lo más limpio a largo plazo; requiere comprar/apuntar un dominio, y Pages puede redirigir ahí mientras muere).
+
+Pasos del corte:
+1. Deploy del Worker a producción. **No hay migración de datos**: las salas son efímeras y el mazo ya está en D1/git. Se pierden (aceptado): cuentas admin de Supabase (re-registro + re-bootstrap del primer admin vía SQL en D1) y nada más.
+2. Ejecutar la opción de URL elegida; si muere Pages, borrar el proyecto tras la ventana de gracia.
+3. **Gotcha PWA**: el SW cachea el bundle viejo (que habla con Supabase). Mantener el proyecto Supabase **vivo pero intocado ~1 semana** para los clientes rezagados; el autoUpdate del SW los va trayendo (solo aplica en las opciones b/c donde la URL sobrevive).
+4. Bootstrap admin: `INSERT INTO user_roles (user_id, role) ...` vía `wrangler d1 execute`.
 
 ### Fase 7 — Demolición (½ sesión, tras la semana de gracia)
 1. `bun remove @supabase/supabase-js`; borrar `src/lib/supabase.js`, `supabase/` (queda en la historia de git), `VITE_SUPABASE_*` de `.env*`.
