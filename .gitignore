@@ -7,3 +7,6 @@ dist/
 # Config local de sesión / de otro proyecto (no aplica a este repo)
 .claude/
 CLAUDE.md
+
+# Tipos generados por wrangler (regenerar con: bun run cf-typegen)
+worker-configuration.d.ts

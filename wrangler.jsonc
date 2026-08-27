@@ -1,9 +1,36 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mamones-con-mamones",
+  "main": "server/index.ts",
   "compatibility_date": "2025-01-01",
+  // Better Auth y kysely-d1 (Fase 3) usan APIs de Node (crypto, etc.).
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "SALA", "class_name": "SalaDO" }]
+  },
+  // Historial de migraciones del DO: las entradas nunca se editan, solo se añaden.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalaDO"] }],
+  "observability": { "enabled": true },
+  // El front (Vite → dist/) se sirve como assets desde este mismo Worker; /api/*
+  // y /salas/* van siempre al Worker (API + WebSocket del multijugador).
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/salas/*"]
+  },
+  // STAGING: el mismo Worker bajo otro nombre, para playtest antes del corte.
+  // Los bindings NO se heredan entre environments: redeclaración completa.
+  "env": {
+    "staging": {
+      "durable_objects": {
+        "bindings": [{ "name": "SALA", "class_name": "SalaDO" }]
+      },
+      "observability": { "enabled": true },
+      "assets": {
+        "directory": "./dist",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*", "/salas/*"]
+      }
+    }
   }
 }

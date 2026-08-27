@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "wrangler dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "pretest": "bun -e \"require('node:fs').mkdirSync('dist',{recursive:true})\"",
+    "test": "vitest run && vitest run -c vitest.server.config.ts",
+    "test:rules": "vitest run",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
