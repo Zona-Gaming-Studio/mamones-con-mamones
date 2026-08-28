@@ -1,3 +1,26 @@
+/* Fuentes propias de las cartas (self-hosted) */
+@font-face {
+  font-family: "Bebas Neue";
+  src: url(/fonts/BebasNeue-Regular.ttf) format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-Italic.ttf) format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-ExtraLightItalic.ttf) format("truetype");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   --felt-top: #1f4d2e;
   --felt-bottom: #10301d;

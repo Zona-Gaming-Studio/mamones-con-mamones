@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiGet } from "../net/api.js";
 import { initSfx, isSfxEnabled, setSfxEnabled, spinTicks, beep, beepUrge, ding } from "../lib/sfx.js";
 import Recap from "./Recap.jsx";
+import CartaArte from "./CartaArte.jsx";
 import "./OnlineGame.css";
 
 // ¿El dispositivo tiene mouse con hover? (escritorio sí, móvil táctil no)
@@ -65,7 +66,7 @@ const REACCIONES = [
   { emoji: "❤️", nombre: "corazón" },
 ];
 
-function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganadora, peor, anon, onLongPress, onLongPressEnd }) {
+function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganadora, peor, anon, onLongPress, onLongPressEnd, style }) {
   const timer = useRef(null);
   const longRef = useRef(false);
 
@@ -96,6 +97,7 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
   return (
     <button
       className={cls}
+      style={style}
       onClick={handleClick}
       onDoubleClick={onDoubleClick}
       onPointerDown={startPress}
@@ -105,16 +107,7 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
       onMouseLeave={() => CAN_HOVER && onLongPressEnd && onLongPressEnd()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {anon ? (
-        <span className="carta__dorso">
-          <img className="carta__logo" src="/assets/logo.png" alt="" />
-        </span>
-      ) : (
-        <>
-          <span className="carta__titulo">{titulo}</span>
-          {flavor && <span className="carta__flavor">{flavor}</span>}
-        </>
-      )}
+      <CartaArte color={color} texto={titulo} flavor={flavor} anon={anon} />
     </button>
   );
 }
@@ -124,6 +117,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const [metaSrv, setMetaSrv] = useState(null); // meta congelada por el server
   const [players, setPlayers] = useState([]);
   const [hand, setHand] = useState([]);
+  const [handView, setHandView] = useState("abanico"); // "abanico" (encimadas) | "completas"
   const [mesa, setMesa] = useState([]);
   const [flavores, setFlavores] = useState({});
   const [jugaron, setJugaron] = useState([]);
@@ -646,40 +640,64 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
       {/* Mano del jugador */}
       {!esJuez && fase !== "terminado" && (
         <div className="og__hand">
-          <p className="og__handtab">Tu mano</p>
+          <div className="og__handhdr">
+            <p className="og__handtab">Tu mano</p>
+            <button
+              type="button"
+              className="og__handtoggle"
+              onClick={() => setHandView((v) => (v === "abanico" ? "completas" : "abanico"))}
+              aria-label="Cambiar vista de la mano"
+            >
+              {handView === "abanico" ? "🃏 Abanico" : "🂠 Completas"}
+            </button>
+          </div>
           <p className="og__handhint">Mantén pulsada una carta para leerla</p>
-          <div className="og__handrow">
-            {hand.map((c, i) => {
+          <div className={`og__handrow og__handrow--${handView}`} style={{ "--n": hand.length }}>
+            {(() => {
               const puedeJugar = fase === "jugando" && !yaJugue && !congelado;
-              if (faceDown) {
-                const espiada = peek[i];
+              // Cada carta va envuelta en un .og__slot (caja-pivote fija): en abanico la carta
+              // interior flota al hover sin mover la caja (sin flicker); en completas es el pivote del reparto.
+              const slot = (c, i) => (
+                <div className="og__slot" style={{ "--i": i, "--n": hand.length }} key={c}>
+                  {faceDown ? (
+                    <Carta
+                      color="roja"
+                      titulo={c}
+                      flavor={flavores[c]}
+                      anon={!peek[i]}
+                      onClick={() => setPeek((p) => (p[i] ? {} : { [i]: true }))}
+                      onDoubleClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
+                      onLongPress={setPreview}
+                      onLongPressEnd={cerrarPreview}
+                    />
+                  ) : (
+                    <Carta
+                      color="roja"
+                      titulo={c}
+                      flavor={flavores[c]}
+                      onClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
+                      disabled={!puedeJugar}
+                      onLongPress={setPreview}
+                      onLongPressEnd={cerrarPreview}
+                    />
+                  )}
+                </div>
+              );
+              // Completas: dos líneas, la de arriba con más cartas (7→4/3, 8→4/4, 9→5/4…)
+              if (handView === "completas") {
+                const topN = Math.ceil(hand.length / 2);
                 return (
-                  <Carta
-                    key={c}
-                    color="roja"
-                    titulo={c}
-                    flavor={flavores[c]}
-                    anon={!espiada}
-                    onClick={() => setPeek((p) => (p[i] ? {} : { [i]: true }))}
-                    onDoubleClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
-                    onLongPress={setPreview}
-                    onLongPressEnd={cerrarPreview}
-                  />
+                  <>
+                    <div className="og__handline">{hand.slice(0, topN).map((c, k) => slot(c, k))}</div>
+                    {hand.length > topN && (
+                      <div className="og__handline">{hand.slice(topN).map((c, k) => slot(c, topN + k))}</div>
+                    )}
+                  </>
                 );
               }
-              return (
-                <Carta
-                  key={c}
-                  color="roja"
-                  titulo={c}
-                  flavor={flavores[c]}
-                  onClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
-                  disabled={!puedeJugar}
-                  onLongPress={setPreview}
-                  onLongPressEnd={cerrarPreview}
-                />
-              );
-            })}
+              // Abanico: lista plana de slots (posicionados en arco por CSS)
+              return hand.map((c, i) => slot(c, i));
+            })()}
           </div>
         </div>
       )}
@@ -689,9 +707,8 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
           así que no lleva handlers propios. */}
       {preview && (
         <div className="og__preview">
-          <div className={`og__preview-card og__preview-card--${preview.color}`}>
-            <span className="og__preview-titulo">{preview.titulo}</span>
-            {preview.flavor && <span className="og__preview-flavor">{preview.flavor}</span>}
+          <div className={`carta carta--${preview.color} og__preview-card`}>
+            <CartaArte color={preview.color} texto={preview.titulo} flavor={preview.flavor} />
           </div>
         </div>
       )}
@@ -702,7 +719,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
           {myPlayed.map((c, i) => (
             <div key={`me-${i}`} className="og__pilecard" style={pileCardStyle(i)}>
               <div className="carta carta--roja">
-                <span className="carta__titulo">{c}</span>
+                <CartaArte color="roja" texto={c} flavor={flavores[c]} />
               </div>
             </div>
           ))}
@@ -713,9 +730,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
               style={pileCardStyle(myPlayed.length + i)}
             >
               <div className="carta carta--roja">
-                <span className="carta__dorso">
-                  <img className="carta__logo" src="/assets/logo.png" alt="" />
-                </span>
+                <CartaArte color="roja" anon />
               </div>
             </div>
           ))}
@@ -736,8 +751,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
           }}
         >
           <div className="carta carta--roja">
-            <span className="carta__titulo">{flying.carta}</span>
-            {flying.flavor && <span className="carta__flavor">{flying.flavor}</span>}
+            <CartaArte color="roja" texto={flying.carta} flavor={flying.flavor} />
           </div>
         </div>
       )}

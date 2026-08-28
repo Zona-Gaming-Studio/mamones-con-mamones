@@ -432,10 +432,103 @@
 }
 .og__handrow {
   display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding: 6px 4px 10px;
   scrollbar-width: thin;
+}
+/* La carta va dentro de un .og__slot (caja-pivote). En abanico el slot es el pivote fijo
+   y la .carta interior es la que flota al hover → sin flicker. */
+.og__slot {
+  flex: none;
+}
+
+/* Vista COMPLETAS: dos líneas (la de arriba con más cartas); reparto escalonado desde abajo */
+.og__handrow--completas {
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  overflow: visible;
+}
+.og__handline {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.og__handrow--completas .og__slot {
+  animation: og-dealIn 340ms cubic-bezier(0.18, 0.8, 0.28, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes og-dealIn {
+  from { transform: translateY(46px) scale(0.82) rotate(-7deg); opacity: 0; }
+  60%  { opacity: 1; }
+  to   { transform: none; opacity: 1; }
+}
+.og__handrow--completas .og__slot:hover .carta {
+  transform: translateY(-6px);
+  transition: transform 0.16s ease;
+}
+
+/* Vista ABANICO: baraja en arco (pivote común lejano). La pila cerrada arranca en el
+   ángulo de la carta más a la IZQUIERDA; al abrir, esa primera queda de ancla (casi no se
+   mueve) y las demás barren hacia la derecha, escalonadas → "abre como un mago". */
+.og__handrow--abanico {
+  position: relative;
+  overflow: visible;          /* el arco se sale del renglón: no recortar */
+  justify-content: center;
+  min-height: 230px;
+  padding-top: 40px;
+  --rotStart: calc((1 - var(--n, 1)) / 2 * 6.5deg);
+}
+.og__handrow--abanico .og__slot {
+  /* ángulo por carta, centrado en la mano; separación 6.5° */
+  --rot: calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 6.5deg);
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  margin: 0;
+  transform-origin: 50% 430%; /* punto de giro común, muy por debajo del centro */
+  transform: translateX(-50%) rotate(var(--rot));
+  /* la de más a la derecha (i=n-1) lidera; la primera (i=0) es la última y de ancla */
+  animation: og-fanOpen 450ms cubic-bezier(0.2, 0.85, 0.25, 1) backwards;
+  animation-delay: calc((var(--n, 1) - 1 - var(--i, 0)) * 60ms);
+}
+@keyframes og-fanOpen {
+  from { transform: translateX(-50%) rotate(var(--rotStart)) translateY(6px); }
+  to   { transform: translateX(-50%) rotate(var(--rot)); }
+}
+/* Hover estable: la caja no se mueve; sube la .carta interior */
+.og__handrow--abanico .og__slot .carta {
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+.og__handrow--abanico .og__slot:hover {
+  z-index: 30;
+}
+.og__handrow--abanico .og__slot:hover .carta {
+  transform: translateY(-24px) scale(1.06);
+  filter: brightness(1.08) drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5));
+}
+/* Header de la mano: título + toggle de vista */
+.og__handhdr {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+.og__handtoggle {
+  margin: 4px 0 0;
+  background: rgba(12, 33, 20, 0.85);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  padding: 5px 12px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-light);
+  cursor: pointer;
+}
+.og__handtoggle:hover {
+  background: rgba(20, 52, 33, 0.95);
 }
 
 /* --- Cartas --- */
@@ -443,13 +536,11 @@
   position: relative;
   flex: none;
   width: 116px;
-  aspect-ratio: 848 / 1264;
+  aspect-ratio: 1623 / 2485;
   border-radius: 10px;
   border: none;
   padding: 0;
-  background-color: #2e8b2e;
-  background-size: cover;
-  background-position: center;
+  background-color: #143015;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
   cursor: default;
   overflow: hidden;
@@ -459,12 +550,28 @@
 .og__green .carta {
   width: 150px;
 }
-.carta--verde {
-  background-image: url(/assets/mamon_verde.png);
+/* Fondo por capa (base+patrón+barra+figura) y overlay de texto vivo (SVG) */
+.carta__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  user-select: none;
 }
-.carta--roja {
-  background-image: url(/assets/mamon_amarillo.png);
-  color: #8a1c10;
+.carta__art {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.carta__art .carta__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .carta--click {
   cursor: pointer;
@@ -806,32 +913,9 @@
   pointer-events: none; /* no roba el mouse: el hover cierra al salir de la carta */
 }
 .og__preview-card {
-  max-width: min(86vw, 360px);
-  max-height: 80vh;
-  overflow-y: auto;
-  background: #f4ecd2;
-  border: 4px solid #8a1c10;
+  width: min(70vw, 300px);
+  height: auto;
   border-radius: 18px;
-  padding: 22px 24px;
-  text-align: center;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   animation: ruletaPop 0.18s ease-out;
-}
-.og__preview-card--verde {
-  border-color: #2e8b2e;
-}
-.og__preview-titulo {
-  display: block;
-  font-size: 22px;
-  font-weight: 800;
-  color: #2b1a00;
-  line-height: 1.2;
-}
-.og__preview-flavor {
-  display: block;
-  margin-top: 12px;
-  font-size: 16px;
-  line-height: 1.45;
-  font-style: italic;
-  color: #4a3a1a;
 }
