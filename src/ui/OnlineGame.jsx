@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabase.js";
+import { useEffect, useRef, useState } from "react";
+import { apiGet } from "../net/api.js";
 import { initSfx, isSfxEnabled, setSfxEnabled, spinTicks, beep, beepUrge, ding } from "../lib/sfx.js";
 import Recap from "./Recap.jsx";
 import "./OnlineGame.css";
@@ -119,8 +119,9 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
   );
 }
 
-export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
+export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const [sala, setSala] = useState(null);
+  const [metaSrv, setMetaSrv] = useState(null); // meta congelada por el server
   const [players, setPlayers] = useState([]);
   const [hand, setHand] = useState([]);
   const [mesa, setMesa] = useState([]);
@@ -143,12 +144,9 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
   const [reactions, setReactions] = useState([]); // emojis flotando sobre cartas
   const [reactFor, setReactFor] = useState(null); // id de mesa con el picker abierto
   const cerrarPreview = () => setPreview(null);
-  const lastSyncRef = useRef("");
-  const firedRef = useRef(0);
   const turnsRef = useRef(5);
   const dingRef = useRef("");
   const rootRef = useRef(null);
-  const chanRef = useRef(null); // canal Realtime (para enviar chat/reacciones)
   const chatOpenRef = useRef(false);
   const chatEndRef = useRef(null);
 
@@ -179,13 +177,13 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
   const me = players.find((p) => p.uid === uid);
   const miEfecto = me?.efecto_ronda;
   const cartasAJugar = me?.cartas_a_jugar ?? 1;
-  const congeladoHasta = me?.congelado_hasta ? Date.parse(me.congelado_hasta) : null;
+  const congeladoHasta = me?.congelado_hasta ?? null; // ms de epoch (snapshot)
   const congelado = congeladoHasta && congeladoHasta > nowTs;
   const congSecs = congelado ? Math.ceil((congeladoHasta - nowTs) / 1000) : 0;
   const yaJugue = misJugadas >= cartasAJugar;
-  const meta = sala?.config?.meta || metaGanar(players.length);
+  const meta = metaSrv ?? (sala?.config?.meta || metaGanar(players.length));
 
-  const deadline = sala?.fase_hasta ? Date.parse(sala.fase_hasta) : null;
+  const deadline = sala?.fase_hasta ?? null; // ms de epoch (snapshot)
   const secsLeft = deadline ? Math.max(0, Math.ceil((deadline - nowTs) / 1000)) : null;
 
   // Tic de 1s.
@@ -194,115 +192,84 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
     return () => clearInterval(t);
   }, []);
 
-  // --- Fetchers ---
-  const fetchSala = useCallback(async () => {
-    const { data } = await supabase.from("salas").select("*").eq("id", salaId).single();
-    if (data) setSala(data);
-  }, [salaId]);
-  const fetchPlayers = useCallback(async () => {
-    const { data } = await supabase
-      .from("jugadores_sala")
-      .select("uid,nombre,puntos,orden,efecto_ronda,cartas_a_jugar,congelado_hasta")
-      .eq("sala_id", salaId)
-      .order("orden");
-    if (data) setPlayers(data);
-  }, [salaId]);
-  const fetchHand = useCallback(async () => {
-    const { data } = await supabase.from("cartas_mano").select("carta").eq("sala_id", salaId).eq("uid", uid);
-    if (data) setHand(data.map((r) => r.carta));
-  }, [salaId, uid]);
-  const fetchMesa = useCallback(async () => {
-    const { data } = await supabase.rpc("mesa_actual", { p_sala: salaId });
-    if (data) setMesa(data);
-  }, [salaId]);
-  const fetchJugaron = useCallback(async () => {
-    const { data } = await supabase.rpc("jugaron_uids", { p_sala: salaId });
-    setJugaron(data || []);
-  }, [salaId]);
-  const fetchMisJugadas = useCallback(async () => {
-    const { count } = await supabase
-      .from("mesa_juego")
-      .select("*", { count: "exact", head: true })
-      .eq("sala_id", salaId)
-      .eq("jugador_uid", uid);
-    setMisJugadas(count || 0);
-  }, [salaId, uid]);
-
+  // Catálogo texto → flavor (para el pie de las cartas y el long-press).
   useEffect(() => {
-    supabase
-      .from("cartas")
-      .select("texto,flavor")
-      .then(({ data }) => {
+    apiGet("/api/cartas")
+      .then(({ cartas }) => {
         const m = {};
-        (data || []).forEach((c) => (m[c.texto] = c.flavor));
+        (cartas || []).forEach((c) => (m[c.texto] = c.flavor));
         setFlavores(m);
-      });
+      })
+      .catch(() => {});
   }, []);
 
+  // El estado llega EMPUJADO por el WebSocket: un snapshot censurado por
+  // jugador tras cada mutación (reemplaza los seis fetches + Realtime + el
+  // polling de 3s; los timeouts los resuelve la alarm del servidor solo).
   useEffect(() => {
-    const refrescar = () => {
-      fetchSala();
-      fetchPlayers();
-      fetchHand();
-      fetchMesa();
-      fetchJugaron();
-      fetchMisJugadas();
-    };
-    refrescar();
-
-    const ch = supabase.channel(`juego:${salaId}`, { config: { presence: { key: uid } } });
-    chanRef.current = ch;
-    ch.on("presence", { event: "sync" }, () => {
-      const connected = Object.keys(ch.presenceState());
-      const key = connected.slice().sort().join(",");
-      if (key === lastSyncRef.current) return;
-      lastSyncRef.current = key;
-      supabase.rpc("marcar_conectados", { p_sala: salaId, p_conectados: connected });
-    })
-      .on("postgres_changes", { event: "*", schema: "public", table: "salas", filter: `id=eq.${salaId}` }, refrescar)
-      .on("postgres_changes", { event: "*", schema: "public", table: "jugadores_sala", filter: `sala_id=eq.${salaId}` }, () => {
-        fetchPlayers();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "mesa_juego", filter: `sala_id=eq.${salaId}` }, () => {
-        fetchMesa();
-        fetchJugaron();
-        fetchMisJugadas();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "cartas_mano", filter: `sala_id=eq.${salaId}` }, fetchHand)
-      .on("broadcast", { event: "chat" }, ({ payload }) => {
-        setChat((c) => [...c.slice(-59), payload]);
-        if (!chatOpenRef.current) setChatUnread((u) => u + 1);
-      })
-      .on("broadcast", { event: "reaccion" }, ({ payload }) => {
-        mostrarReaccion(payload.mesaId, payload.emoji);
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") await ch.track({});
+    const aplicar = (s) => {
+      setSala({
+        fase: s.sala.fase,
+        ronda: s.sala.ronda,
+        config: s.sala.config,
+        juez_uid: s.sala.juezUid,
+        carta_verde: s.sala.cartaVerde,
+        mejor_mesa_id: s.sala.mejorMesaId,
+        peor_uid: s.sala.peorUid,
+        ruleta_efecto: s.sala.ruletaEfecto,
+        fase_hasta: s.sala.faseHasta,
+        host_uid: s.sala.hostUid,
+        historial: s.sala.historial,
       });
+      setMetaSrv(s.meta ?? null);
+      setPlayers(
+        s.jugadores
+          .slice()
+          .sort((a, b) => a.orden - b.orden)
+          .map((j) => ({
+            uid: j.uid,
+            nombre: j.nombre,
+            puntos: j.puntos,
+            orden: j.orden,
+            efecto_ronda: j.efectoRonda,
+            cartas_a_jugar: j.cartasAJugar,
+            congelado_hasta: j.congeladoHasta,
+          }))
+      );
+      setHand(s.mano);
+      setMesa(
+        s.mesa.map((m) => ({
+          id: m.id,
+          carta: m.carta,
+          es_ganadora: m.esGanadora,
+          jugador_uid: m.jugadorUid,
+          nombre: m.nombre,
+        }))
+      );
+      setJugaron(s.jugaron);
+      setMisJugadas(s.misJugadas.length);
+    };
+
+    const offSnap = cliente.on("snapshot", aplicar);
+    const offMsg = cliente.on("mensaje", (m) => {
+      if (m.t === "error") setError(m.mensaje);
+      else if (m.t === "chat") {
+        if (m.uid === uid) return; // el propio ya se pintó optimista
+        setChat((c) => [...c.slice(-59), m]);
+        if (!chatOpenRef.current) setChatUnread((u) => u + 1);
+      } else if (m.t === "reaccion") {
+        if (m.uid === uid) return;
+        mostrarReaccion(m.mesaId, m.emoji);
+      }
+    });
+    if (cliente.ultimoSnapshot) aplicar(cliente.ultimoSnapshot);
 
     return () => {
-      supabase.removeChannel(ch);
-      chanRef.current = null;
+      offSnap();
+      offMsg();
     };
-  }, [salaId, uid, fetchSala, fetchPlayers, fetchHand, fetchMesa, fetchJugaron, fetchMisJugadas]);
-
-  // Respaldo cada 3s: refresca el estado y pide resolver el timeout.
-  // resolver_timeout lo decide el SERVIDOR con su propio reloj (no el del navegador),
-  // así que aunque haya desfase de hora, la fase vencida se resuelve en ≤3s.
-  useEffect(() => {
-    const t = setInterval(() => {
-      fetchSala();
-      fetchMesa();
-      fetchPlayers();
-      fetchJugaron();
-      fetchMisJugadas();
-      fetchHand();
-      supabase.rpc("resolver_timeout", { p_sala: salaId }).then(({ error }) => {
-        if (error) console.warn("resolver_timeout:", error.message);
-      });
-    }, 3000);
-    return () => clearInterval(t);
-  }, [salaId, fetchSala, fetchMesa, fetchPlayers, fetchJugaron, fetchMisJugadas, fetchHand]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente, uid]);
 
   // Reiniciar "peek" y el montoncito propio cuando cambia la ronda.
   useEffect(() => {
@@ -318,16 +285,6 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
   useEffect(() => {
     if (chatOpen) chatEndRef.current?.scrollIntoView({ block: "end" });
   }, [chat, chatOpen]);
-
-  // Al vencer la fase, reintenta resolver hasta que el server la procese (tolera
-  // desfases de reloj y eventos perdidos). El server valida now() >= fase_hasta.
-  useEffect(() => {
-    if (!deadline || nowTs <= deadline) return;
-    const now = Date.now();
-    if (now - firedRef.current < 2500) return; // throttle de reintentos
-    firedRef.current = now;
-    supabase.rpc("resolver_timeout", { p_sala: salaId });
-  }, [nowTs, deadline, salaId]);
 
   // Animación de la ruleta (modo Amargo, en resultado).
   useEffect(() => {
@@ -370,13 +327,13 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
   }, [fase, ronda]);
 
   // --- Intenciones ---
-  const rpc = async (fn, args) => {
+  // Van por el WebSocket; una validación rechazada vuelve como {t:'error'}.
+  const enviar = (msg) => {
     setError("");
-    const { error } = await supabase.rpc(fn, args);
-    if (error) setError(error.message);
+    cliente.enviar(msg);
   };
   const jugar = (carta) => {
-    rpc("jugar_carta", { p_sala: salaId, p_carta: carta });
+    enviar({ t: "jugar_carta", carta });
     setMisJugadas((n) => n + 1); // optimista
   };
   // Juega animando la carta en arco desde la mano hasta el montoncito del centro.
@@ -406,29 +363,23 @@ export default function OnlineGame({ salaId, uid, codigo, onLeave }) {
     const text = chatInput.trim().slice(0, 200);
     if (!text) return;
     const msg = { id: uid7(), uid, nombre: me?.nombre || "Tú", text };
-    chanRef.current?.send({ type: "broadcast", event: "chat", payload: msg });
-    setChat((c) => [...c.slice(-59), msg]); // optimista (a mí no me llega el broadcast)
+    cliente.enviar({ t: "chat", ...msg });
+    setChat((c) => [...c.slice(-59), msg]); // optimista (el eco propio se filtra)
     setChatInput("");
   };
   const enviarReaccion = (mesaId, emoji) => {
-    chanRef.current?.send({ type: "broadcast", event: "reaccion", payload: { mesaId, emoji } });
-    mostrarReaccion(mesaId, emoji); // optimista
+    cliente.enviar({ t: "reaccion", mesaId, emoji });
+    mostrarReaccion(mesaId, emoji); // optimista (el eco propio se filtra)
     setReactFor(null);
   };
 
-  const elegirGanadora = (id) => rpc("elegir_ganadora", { p_sala: salaId, p_mesa_id: id });
-  const elegirPeor = (id) => rpc("elegir_peor", { p_sala: salaId, p_mesa_id: id });
-  const pasar = (target) => rpc("pasar_mamon", { p_sala: salaId, p_target: target });
-  const siguiente = () => rpc("siguiente_ronda", { p_sala: salaId });
-  const reiniciar = () => rpc("reiniciar_partida", { p_sala: salaId });
-  const salir = async () => {
-    try {
-      await supabase.rpc("abandonar_sala", { p_sala: salaId });
-    } catch {
-      /* salimos igual */
-    }
-    onLeave();
-  };
+  const elegirGanadora = (id) => enviar({ t: "elegir_ganadora", mesaId: id });
+  const elegirPeor = (id) => enviar({ t: "elegir_peor", mesaId: id });
+  const pasar = (target) => enviar({ t: "pasar_mamon", targetUid: target });
+  const siguiente = () => enviar({ t: "siguiente_ronda" });
+  const reiniciar = () => enviar({ t: "reiniciar" });
+  // El abandono real (mensaje + cierre del socket) vive en el salir del Lobby.
+  const salir = () => onLeave();
 
   if (!sala) {
     return (

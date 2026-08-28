@@ -84,8 +84,7 @@ export function corsAuth(request: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    // x-mcm-uid: stub de identidad de la Fase 2, muere en la Fase 4.
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-mcm-uid",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Credentials": "true",
     // El plugin bearer devuelve el token de sesión en este header al iniciar sesión.
     "Access-Control-Expose-Headers": "set-auth-token",

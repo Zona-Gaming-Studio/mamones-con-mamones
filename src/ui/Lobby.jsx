@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { supabase, ensureAuth } from "../lib/supabase.js";
+import { ensureAuth } from "../lib/auth.js";
+import { apiPost } from "../net/api.js";
+import { SalaClient } from "../net/salaClient.js";
 import OnlineGame from "./OnlineGame.jsx";
 import TopBar from "./TopBar.jsx";
 import "./Lobby.css";
@@ -23,8 +25,9 @@ export default function Lobby({ onBack, initialCode }) {
   const [uid, setUid] = useState(null);
   const [nombre, setNombre] = useState(() => localStorage.getItem("mcm_nombre") || "");
   const [codigoInput, setCodigoInput] = useState((initialCode || "").toUpperCase());
-  const [room, setRoom] = useState(null); // { codigo, sala_id }
-  const [players, setPlayers] = useState([]);
+  const [room, setRoom] = useState(null); // { codigo }
+  const [cliente, setCliente] = useState(null); // SalaClient (WS hacia la SalaDO)
+  const [players, setPlayers] = useState([]); // conectados (para la lista y los gates)
   const [fase, setFase] = useState("lobby");
   const [config, setConfig] = useState({ modo: "clasica", piensaRapido: false, meta: null });
   const [hostUid, setHostUid] = useState(null);
@@ -32,15 +35,14 @@ export default function Lobby({ onBack, initialCode }) {
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
-  const channelRef = useRef(null);
-  const lastSyncRef = useRef("");
+  const clienteRef = useRef(null);
 
   const isHost = hostUid === uid;
 
-  const entrarSala = (codigo, sala_id) => {
-    localStorage.setItem("mcm_room", JSON.stringify({ codigo, sala_id }));
+  const entrarSala = (codigo) => {
+    localStorage.setItem("mcm_room", JSON.stringify({ codigo }));
     setFase("lobby");
-    setRoom({ codigo, sala_id });
+    setRoom({ codigo });
   };
 
   useEffect(() => {
@@ -49,104 +51,59 @@ export default function Lobby({ onBack, initialCode }) {
       .catch((e) => setError("No se pudo iniciar sesión: " + e.message));
   }, []);
 
-  // Reconexión: si quedó una sala guardada y seguimos siendo miembros, reentrar.
-  // Si llegamos por un enlace de invitación, esa sala tiene prioridad: no reconectamos.
+  // Reconexión: si quedó una sala guardada, reentrar (el join del server acepta
+  // a un miembro en cualquier fase y rechaza al resto si la partida empezó).
+  // Si llegamos por un enlace de invitación, esa sala tiene prioridad.
+  const reconexionRef = useRef(false);
   useEffect(() => {
-    if (!uid || room || initialCode) return;
+    if (!uid || room || initialCode || reconexionRef.current) return;
+    reconexionRef.current = true;
     let saved;
     try {
       saved = JSON.parse(localStorage.getItem("mcm_room") || "null");
     } catch {
       saved = null;
     }
-    if (!saved?.sala_id) return;
+    if (!saved?.codigo) return localStorage.removeItem("mcm_room");
     (async () => {
-      const { data: sala } = await supabase
-        .from("salas")
-        .select("id,codigo,host_uid,fase")
-        .eq("id", saved.sala_id)
-        .maybeSingle();
-      if (!sala) return localStorage.removeItem("mcm_room");
-      const { data: me } = await supabase
-        .from("jugadores_sala")
-        .select("uid")
-        .eq("sala_id", sala.id)
-        .eq("uid", uid)
-        .maybeSingle();
-      if (!me) return localStorage.removeItem("mcm_room");
-      setHostUid(sala.host_uid);
-      setFase(sala.fase);
-      setRoom({ codigo: sala.codigo, sala_id: sala.id });
+      try {
+        await apiPost(`/api/salas/${saved.codigo}/join`, { nombre: nombre.trim() || "Jugador" });
+        setRoom({ codigo: saved.codigo });
+      } catch {
+        localStorage.removeItem("mcm_room"); // sala muerta o partida ajena en curso
+      }
     })();
-  }, [uid, room]);
+  }, [uid, room, initialCode, nombre]);
 
-  // Presencia + cambios de la sala (fase) mientras estamos dentro.
+  // Dentro de la sala: UNA conexión WebSocket para lobby y tablero (se pasa a
+  // OnlineGame). El snapshot trae fase, config, host y jugadores; la presencia
+  // es el campo `conectado` que mantiene el ciclo de vida real de los sockets.
   useEffect(() => {
     if (!room || !uid) return;
+    const cli = new SalaClient(room.codigo);
+    clienteRef.current = cli;
+    setCliente(cli);
 
-    // Estado inicial (fase + config).
-    supabase
-      .from("salas")
-      .select("fase,config,host_uid")
-      .eq("id", room.sala_id)
-      .single()
-      .then(({ data }) => {
-        if (!data) return;
-        setFase(data.fase);
-        setHostUid(data.host_uid);
-        if (data.config) setConfig(data.config);
-      });
-
-    const channel = supabase.channel(`sala:${room.codigo}`, {
-      config: { presence: { key: uid } },
+    const offSnap = cli.on("snapshot", (s) => {
+      setFase(s.sala.fase);
+      setHostUid(s.sala.hostUid);
+      if (s.sala.config) setConfig(s.sala.config);
+      setPlayers(s.jugadores.filter((j) => j.conectado));
     });
-    channelRef.current = channel;
-
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        setPlayers(Object.entries(state).map(([key, metas]) => ({ uid: key, ...(metas[0] || {}) })));
-        // Reportar conectados (deduplicado) para migrar host si hace falta.
-        const connected = Object.keys(state);
-        const key = connected.slice().sort().join(",");
-        if (key !== lastSyncRef.current) {
-          lastSyncRef.current = key;
-          supabase.rpc("marcar_conectados", { p_sala: room.sala_id, p_conectados: connected });
-        }
-      })
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "salas", filter: `id=eq.${room.sala_id}` },
-        (payload) => {
-          setFase(payload.new.fase);
-          setHostUid(payload.new.host_uid);
-          if (payload.new.config) setConfig(payload.new.config);
-        }
-      )
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") await channel.track({ nombre });
-      });
-
-    // Respaldo por si se pierde un evento de Realtime (p. ej. el inicio de partida).
-    const poll = setInterval(async () => {
-      const { data } = await supabase
-        .from("salas")
-        .select("fase,config,host_uid")
-        .eq("id", room.sala_id)
-        .maybeSingle();
-      if (!data) return;
-      setFase(data.fase);
-      setHostUid(data.host_uid);
-      if (data.config) setConfig(data.config);
-    }, 3000);
+    const offMsg = cli.on("mensaje", (m) => {
+      if (m.t === "error") setError(m.mensaje);
+    });
+    cli.connect();
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-      clearInterval(poll);
+      offSnap();
+      offMsg();
+      cli.close();
+      clienteRef.current = null;
+      setCliente(null);
       setPlayers([]);
     };
-  }, [room, uid, nombre]);
+  }, [room, uid]);
 
   const guardarNombre = (v) => {
     setNombre(v);
@@ -157,12 +114,15 @@ export default function Lobby({ onBack, initialCode }) {
     if (!nombre.trim()) return setError("Escribe tu nombre primero.");
     setError("");
     setBusy(true);
-    const { data, error } = await supabase.rpc("crear_sala", { p_nombre: nombre.trim() });
-    setBusy(false);
-    if (error) return setError(error.message);
-    const row = Array.isArray(data) ? data[0] : data;
-    setHostUid(uid); // el creador es host
-    entrarSala(row.codigo, row.sala_id);
+    try {
+      const { codigo } = await apiPost("/api/salas", { nombre: nombre.trim() });
+      setHostUid(uid); // el creador es host
+      entrarSala(codigo);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const unirseSala = async () => {
@@ -171,34 +131,34 @@ export default function Lobby({ onBack, initialCode }) {
     setError("");
     setBusy(true);
     const code = codigoInput.trim().toUpperCase();
-    const { data, error } = await supabase.rpc("unirse_sala", { p_codigo: code, p_nombre: nombre.trim() });
-    setBusy(false);
-    if (error) return setError(error.message);
-    entrarSala(code, data);
+    try {
+      await apiPost(`/api/salas/${code}/join`, { nombre: nombre.trim() });
+      entrarSala(code);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  // El host actualiza la config; todos la ven por Realtime.
-  const guardarConfig = async (cambios) => {
+  // El host actualiza la config; el snapshot difundido se la muestra a todos.
+  const guardarConfig = (cambios) => {
     const c = { modo: "clasica", piensaRapido: false, meta: null, ...config, ...cambios };
     setConfig(c); // optimista
-    const { error } = await supabase.rpc("set_config_sala", {
-      p_sala: room.sala_id,
-      p_modo: c.modo,
-      p_piensa: !!c.piensaRapido,
-      p_meta: c.meta ?? null,
+    clienteRef.current?.enviar({
+      t: "set_config",
+      modo: c.modo,
+      piensaRapido: !!c.piensaRapido,
+      meta: c.meta ?? null,
     });
-    if (error) setError(error.message);
   };
   const elegirModo = (modo) => guardarConfig({ modo });
   const togglePiensa = () => guardarConfig({ piensaRapido: !config.piensaRapido });
   const elegirMeta = (meta) => guardarConfig({ meta });
 
-  const iniciarPartida = async () => {
+  const iniciarPartida = () => {
     setError("");
-    setBusy(true);
-    const { error } = await supabase.rpc("iniciar_partida", { p_sala: room.sala_id });
-    setBusy(false);
-    if (error) setError(error.message);
+    clienteRef.current?.enviar({ t: "iniciar" });
   };
 
   // Comparte un enlace de invitación (Web Share API) o lo copia al portapapeles.
@@ -234,14 +194,8 @@ export default function Lobby({ onBack, initialCode }) {
     }
   };
 
-  const salir = async () => {
-    if (room) {
-      try {
-        await supabase.rpc("abandonar_sala", { p_sala: room.sala_id });
-      } catch {
-        /* salimos igual */
-      }
-    }
+  const salir = () => {
+    clienteRef.current?.enviar({ t: "abandonar" });
     localStorage.removeItem("mcm_room");
     setRoom(null);
     setFase("lobby");
@@ -250,8 +204,8 @@ export default function Lobby({ onBack, initialCode }) {
   };
 
   // ---- Partida en curso: tablero online ----
-  if (room && fase !== "lobby") {
-    return <OnlineGame salaId={room.sala_id} uid={uid} codigo={room.codigo} onLeave={salir} />;
+  if (room && fase !== "lobby" && cliente) {
+    return <OnlineGame cliente={cliente} uid={uid} codigo={room.codigo} onLeave={salir} />;
   }
 
   // ---- En sala, esperando el inicio ----

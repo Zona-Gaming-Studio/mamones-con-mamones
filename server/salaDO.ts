@@ -178,6 +178,16 @@ export class SalaDO extends DurableObject<Env> {
     const uid = (ws.deserializeAttachment() as { uid?: string } | null)?.uid ?? "";
     if (!uid || !msg.t) return;
 
+    // Heartbeat del cliente (detecta sockets zombis en móvil).
+    if (msg.t === "ping") {
+      try {
+        ws.send('{"t":"pong"}');
+      } catch {
+        /* socket muerto */
+      }
+      return;
+    }
+
     // Chat y reacciones: relay efímero a toda la sala, sin tocar el estado
     // (mismo contrato que el broadcast de Realtime que reemplazan).
     if (EFIMEROS_WS.includes(msg.t)) {

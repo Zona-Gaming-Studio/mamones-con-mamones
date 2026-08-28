@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import Menu from "./ui/Menu.jsx";
 import Lobby from "./ui/Lobby.jsx";
 import Splash from "./ui/Splash.jsx";
-import { ensureAuth } from "./lib/supabase.js";
+import { ensureAuth } from "./lib/auth.js";
 
 // Code-splitting: Phaser (~1.4 MB) y el panel admin salen del bundle principal.
 // El menú/lobby cargan y responden sin pagar ese peso; el chunk del juego se

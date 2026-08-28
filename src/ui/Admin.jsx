@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../lib/supabase.js";
+import { authClient, useSession } from "../lib/auth.js";
+import { apiFetch, apiGet, apiPost } from "../net/api.js";
 import { parseCsv, toCsv, downloadText } from "../lib/csv.js";
 import "./Admin.css";
 
@@ -7,18 +8,19 @@ const CARTA_VACIA = { id: null, color: "roja", tipo: "", texto: "", flavor: "", 
 const REDIRECT = () => `${window.location.origin}/?admin`;
 
 // ¿Es una sesión real (no anónima)?
-const esReal = (session) => !!session && session.user && !session.user.is_anonymous;
+const esReal = (session) => !!session?.user && !session.user.isAnonymous;
 
 export default function Admin({ onBack }) {
-  const [session, setSession] = useState(null);
+  const { data: session, isPending } = useSession();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [rolListo, setRolListo] = useState(false);
 
   // Login
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMsg, setAuthMsg] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [googleOn, setGoogleOn] = useState(false);
 
   // Cartas
   const [cartas, setCartas] = useState([]);
@@ -32,89 +34,77 @@ export default function Admin({ onBack }) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
-  // --- Sesión + rol ---
-  const revisarRol = useCallback(async (s) => {
-    if (!esReal(s)) {
-      setIsAdmin(false);
-      return;
-    }
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", s.user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-    setIsAdmin(!!data);
+  // ¿Hay botón de Google? (solo si el Worker tiene las credenciales).
+  useEffect(() => {
+    apiGet("/api/config")
+      .then((c) => setGoogleOn(!!c.googleEnabled))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    let activo = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!activo) return;
-      setSession(data.session);
-      await revisarRol(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
-      setSession(s);
-      await revisarRol(s);
-    });
-    return () => {
-      activo = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [revisarRol]);
-
-  // --- Cargar cartas cuando somos admin ---
+  // --- Rol + cartas: una sola llamada. El servidor decide (403 = sin rol). ---
   const cargarCartas = useCallback(async () => {
     setCargandoCartas(true);
-    const { data, error } = await supabase
-      .from("cartas")
-      .select("*")
-      .order("color")
-      .order("tipo", { nullsFirst: true })
-      .order("texto");
-    if (error) setMsg("Error cargando cartas: " + error.message);
-    else setCartas(data || []);
-    setCargandoCartas(false);
+    try {
+      const res = await apiFetch("/api/admin/cartas");
+      if (res.status === 403) {
+        setIsAdmin(false);
+        return;
+      }
+      const { cartas: filas } = await res.json();
+      const orden = (c) =>
+        `${c.color}|${(c.tipo || "").toLowerCase()}|${c.texto.toLowerCase()}`;
+      setIsAdmin(true);
+      setCartas((filas || []).sort((a, b) => orden(a).localeCompare(orden(b))));
+    } catch (e) {
+      setMsg("Error cargando cartas: " + e.message);
+    } finally {
+      setCargandoCartas(false);
+      setRolListo(true);
+    }
   }, []);
 
   useEffect(() => {
-    if (isAdmin) cargarCartas();
-  }, [isAdmin, cargarCartas]);
+    if (isPending) return;
+    if (!esReal(session)) {
+      setIsAdmin(false);
+      setRolListo(true);
+      return;
+    }
+    setRolListo(false);
+    cargarCartas();
+  }, [isPending, session, cargarCartas]);
 
   // --- Auth handlers ---
   const loginEmail = async (e) => {
     e.preventDefault();
     setAuthMsg("");
     setAuthBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const { error } = await authClient.signIn.email({ email: email.trim(), password });
     setAuthBusy(false);
-    if (error) setAuthMsg(error.message);
+    if (error) setAuthMsg(error.message || "No se pudo iniciar sesión.");
   };
   const registrarEmail = async () => {
     setAuthMsg("");
     if (!email.trim() || !password) return setAuthMsg("Escribe correo y contraseña.");
     setAuthBusy(true);
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await authClient.signUp.email({
       email: email.trim(),
       password,
-      options: { emailRedirectTo: REDIRECT() },
+      name: email.trim().split("@")[0],
     });
     setAuthBusy(false);
-    if (error) return setAuthMsg(error.message);
-    if (!data.session) setAuthMsg("Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.");
+    if (error) return setAuthMsg(error.message || "No se pudo crear la cuenta.");
   };
   const loginGoogle = async () => {
     setAuthMsg("");
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await authClient.signIn.social({
       provider: "google",
-      options: { redirectTo: REDIRECT() },
+      callbackURL: REDIRECT(),
     });
-    if (error) setAuthMsg(error.message);
+    if (error) setAuthMsg(error.message || "No se pudo iniciar con Google.");
   };
   const logout = async () => {
-    await supabase.auth.signOut();
+    await authClient.signOut();
     setIsAdmin(false);
   };
 
@@ -132,33 +122,54 @@ export default function Admin({ onBack }) {
       flavor: c.flavor?.trim() || null,
       activa: !!c.activa,
     };
-    let error;
-    if (c.id) ({ error } = await supabase.from("cartas").update(payload).eq("id", c.id));
-    else ({ error } = await supabase.from("cartas").insert(payload));
-    setBusy(false);
-    if (error) {
-      setMsg(error.code === "23505" ? `Ya existe una carta ${c.color} con ese texto.` : error.message);
-      return;
+    try {
+      if (c.id) {
+        const res = await apiFetch(`/api/admin/cartas/${c.id}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || `error ${res.status}`);
+      } else {
+        await apiPost("/api/admin/cartas", payload);
+      }
+      setEditando(null);
+      setMsg(c.id ? "Carta actualizada." : "Carta creada.");
+      cargarCartas();
+    } catch (e) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
     }
-    setEditando(null);
-    setMsg(c.id ? "Carta actualizada." : "Carta creada.");
-    cargarCartas();
   };
 
   const borrar = async (carta) => {
     if (!confirm(`¿Borrar la carta "${carta.texto}"? Esto no se puede deshacer.`)) return;
     setBusy(true);
-    const { error } = await supabase.from("cartas").delete().eq("id", carta.id);
-    setBusy(false);
-    if (error) return setMsg(error.message);
-    setMsg("Carta borrada.");
-    cargarCartas();
+    try {
+      const res = await apiFetch(`/api/admin/cartas/${carta.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`error ${res.status}`);
+      setMsg("Carta borrada.");
+      cargarCartas();
+    } catch (e) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleActiva = async (carta) => {
-    const { error } = await supabase.from("cartas").update({ activa: !carta.activa }).eq("id", carta.id);
-    if (error) return setMsg(error.message);
     setCartas((cs) => cs.map((x) => (x.id === carta.id ? { ...x, activa: !x.activa } : x)));
+    const res = await apiFetch(`/api/admin/cartas/${carta.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...carta, activa: !carta.activa }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setMsg("No se pudo cambiar el estado de la carta.");
+      cargarCartas(); // revertir al estado real
+    }
   };
 
   // --- CSV ---
@@ -200,8 +211,7 @@ export default function Admin({ onBack }) {
         });
       }
       if (registros.length === 0) throw new Error("Ninguna fila válida.");
-      const { error } = await supabase.from("cartas").upsert(registros, { onConflict: "color,texto" });
-      if (error) throw error;
+      await apiPost("/api/admin/cartas/upsert", { cartas: registros });
       setMsg(`Importadas/actualizadas ${registros.length} cartas.${errores.length ? ` ${errores.length} filas ignoradas.` : ""}`);
       cargarCartas();
     } catch (err) {
@@ -232,7 +242,7 @@ export default function Admin({ onBack }) {
   }, [cartas, color, tipoFiltro, q, soloActivas]);
 
   // --- Render: cargando ---
-  if (loading) {
+  if (isPending || !rolListo) {
     return (
       <div className="admin admin--center">
         <p>Cargando…</p>
@@ -271,10 +281,14 @@ export default function Admin({ onBack }) {
           <button className="admin__btn" disabled={authBusy} onClick={registrarEmail}>
             Crear cuenta
           </button>
-          <div className="admin__divider"><span>o</span></div>
-          <button className="admin__btn admin__btn--google" disabled={authBusy} onClick={loginGoogle}>
-            Continuar con Google
-          </button>
+          {googleOn && (
+            <>
+              <div className="admin__divider"><span>o</span></div>
+              <button className="admin__btn admin__btn--google" disabled={authBusy} onClick={loginGoogle}>
+                Continuar con Google
+              </button>
+            </>
+          )}
           {authMsg && <p className="admin__msg">{authMsg}</p>}
           <button className="admin__link" onClick={onBack}>← Volver al juego</button>
         </div>

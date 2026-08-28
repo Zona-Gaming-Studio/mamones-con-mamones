@@ -4,9 +4,8 @@
  * público con `getByName`). Los assets del front se sirven desde este mismo
  * Worker (ver wrangler.jsonc); aquí solo llegan /api/* y /salas/*.
  *
- * Identidad: la sesión de Better Auth manda (cookie o bearer). El stub de la
- * Fase 2 (`x-mcm-uid` / `?uid=`) sobrevive como fallback SOLO mientras el
- * cliente React sigue en Supabase — TODO Fase 4: eliminar `uidStub`.
+ * Identidad: la sesión de Better Auth (cookie o bearer) es la única vía — el
+ * Worker la resuelve y estampa el uid verificado hacia el DO.
  */
 import { SalaDO } from "./salaDO.js";
 import { corsAuth, getAuth } from "./auth.js";
@@ -26,14 +25,9 @@ function generarCodigo(): string {
   return c;
 }
 
-function uidStub(request: Request, url: URL): string | null {
-  const uid = request.headers.get("x-mcm-uid") ?? url.searchParams.get("uid");
-  return uid && /^[A-Za-z0-9_-]{1,64}$/.test(uid) ? uid : null;
-}
-
 async function resolverUid(request: Request, env: Env, url: URL): Promise<string | null> {
   const user = await verifiedUser(request, env, url);
-  return user?.id ?? uidStub(request, url);
+  return user?.id ?? null;
 }
 
 async function leerNombre(request: Request): Promise<string | null> {
