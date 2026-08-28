@@ -1,0 +1,40 @@
+# Verificación de PRs: lo mismo que exige el deploy, pero antes de mergear.
+#
+# Solo corre en `pull_request` a propósito: un push a `master` ya dispara
+# `deploy.yml`, que corre los tests como gate antes de publicar; correrlos
+# también aquí sería gastar el runner dos veces por el mismo commit.
+name: CI
+
+on:
+  pull_request:
+
+# En una PR conviene cancelar la corrida anterior: si llegan 3 pushes seguidos,
+# solo importa el último. (Al revés que en el deploy, donde abortar es peligroso.)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tests · build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Instalar dependencias
+        run: bun install --frozen-lockfile
+
+      - name: Tests (motor de reglas + Worker/SalaDO en workerd)
+        run: bun run test
+
+      # El build atrapa lo que los tests no ven: la config de Vite, imports de
+      # assets, la PWA. Y es exactamente el paso del que depende el deploy.
+      - name: Build del cliente
+        run: bun run build
