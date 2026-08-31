@@ -89,13 +89,13 @@ describe("iniciarPartida", () => {
     );
   });
 
-  it("arranca la ronda 1 con manos de 7, juez, verde y deadline de 60s", () => {
+  it("arranca la ronda 1 con manos de 7, juez, verde y deadline de 45s", () => {
     const { estado, ctx } = partidaIniciada(4);
     expect(estado.fase).toBe("jugando");
     expect(estado.ronda).toBe(1);
     expect(estado.juezUid).toBeTruthy();
     expect(estado.cartaVerde).toMatch(/^V/);
-    expect(estado.faseHasta).toBe(ctx.now() + 60_000);
+    expect(estado.faseHasta).toBe(ctx.now() + 45_000);
     expect(estado.rondaInicio).toBe(ctx.now());
     for (const j of estado.jugadores) {
       expect(estado.manos[j.uid]).toHaveLength(MANO_SIZE);

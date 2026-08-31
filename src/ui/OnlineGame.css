@@ -505,6 +505,19 @@
   align-items: center;
   gap: 6px;
 }
+/* Corona de la ganadora: asoma sobre el borde superior de la carta; la carta va
+   por delante (va después en el DOM) y le tapa la base → parece que la lleva puesta. */
+.og__crown {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -88%); /* casi toda por encima; ~12% tapada por la carta */
+  width: 52%;
+  height: auto;
+  pointer-events: none;
+  z-index: 0;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.4));
+}
 .og__autor {
   font-size: 13px;
   color: var(--text-muted);
@@ -531,21 +544,6 @@
   margin-top: auto;
   width: 100%;
 }
-/* Pestaña "Tu mano" sobre el abanico (prototipo). */
-.og__handtab {
-  margin: 4px auto 0;
-  width: fit-content;
-  background: rgba(12, 33, 20, 0.85);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px 10px 0 0;
-  border-bottom: none;
-  padding: 5px 16px 4px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
 .og__handhint {
   margin: 2px 0;
   text-align: center;
@@ -562,60 +560,43 @@
   flex: none;
 }
 
-/* Vista COMPLETAS: dos líneas (la de arriba con más cartas); reparto escalonado desde abajo */
-.og__handrow--completas {
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 4px;
-  overflow: visible;
-}
-.og__handline {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-.og__handrow--completas .og__slot {
-  animation: og-dealIn 340ms cubic-bezier(0.18, 0.8, 0.28, 1) backwards;
-  animation-delay: calc(var(--i, 0) * 60ms);
-}
-@keyframes og-dealIn {
-  from { transform: translateY(46px) scale(0.82) rotate(-7deg); opacity: 0; }
-  60%  { opacity: 1; }
-  to   { transform: none; opacity: 1; }
-}
-.og__handrow--completas .og__slot:hover .carta {
-  transform: translateY(-6px);
-  transition: transform 0.16s ease;
-}
-
-/* Vista ABANICO: baraja en arco (pivote común lejano). La pila cerrada arranca en el
-   ángulo de la carta más a la IZQUIERDA; al abrir, esa primera queda de ancla (casi no se
-   mueve) y las demás barren hacia la derecha, escalonadas → "abre como un mago". */
+/* Vista ABANICO (única): solape IZQUIERDA→DERECHA. Cada carta deja ver su franja
+   izquierda (el título); la última (derecha) va encima y completa = la más cercana al
+   jugador. La curva sale de rotar cada carta alrededor de un pivote bajo. */
 .og__handrow--abanico {
   position: relative;
-  overflow: visible;          /* el arco se sale del renglón: no recortar */
+  overflow: visible; /* el arco se sale del renglón: no recortar */
   justify-content: center;
-  min-height: 230px;
-  padding-top: 40px;
-  --rotStart: calc((1 - var(--n, 1)) / 2 * 6.5deg);
+  min-height: 250px;
+  padding-top: 30px;
+  padding-bottom: 48px; /* espacio para la caída del arco en los extremos */
 }
 .og__handrow--abanico .og__slot {
-  /* ángulo por carta, centrado en la mano; separación 6.5° */
-  --rot: calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 6.5deg);
+  --c: calc(var(--i, 0) - (var(--n, 1) - 1) / 2); /* offset desde el centro (sin unidad) */
+  --c2: calc(var(--c) * var(--c)); /* distancia² al centro → arco vertical */
   position: absolute;
   left: 50%;
   bottom: 6px;
   margin: 0;
-  transform-origin: 50% 430%; /* punto de giro común, muy por debajo del centro */
-  transform: translateX(-50%) rotate(var(--rot));
-  /* la de más a la derecha (i=n-1) lidera; la primera (i=0) es la última y de ancla */
-  animation: og-fanOpen 450ms cubic-bezier(0.2, 0.85, 0.25, 1) backwards;
-  animation-delay: calc((var(--n, 1) - 1 - var(--i, 0)) * 60ms);
+  transform-origin: 50% 50%;
+  /* solape horizontal + caída de los extremos (arco) + rotación (fan) */
+  transform: translateX(calc(-50% + var(--c) * 34%)) translateY(calc(var(--c2) * 2%))
+    rotate(calc(var(--c) * 4deg));
+  z-index: calc(10 + var(--i, 0)); /* la de la derecha, encima y completa */
+  animation: og-fanOpen 420ms cubic-bezier(0.2, 0.85, 0.25, 1) backwards;
+  animation-delay: calc((var(--n, 1) - 1 - var(--i, 0)) * 55ms);
 }
 @keyframes og-fanOpen {
-  from { transform: translateX(-50%) rotate(var(--rotStart)) translateY(6px); }
-  to   { transform: translateX(-50%) rotate(var(--rot)); }
+  from {
+    transform: translateX(calc(-50% + var(--c) * 34%)) translateY(calc(var(--c2) * 2% + 16px))
+      rotate(calc(var(--c) * 4deg));
+    opacity: 0;
+  }
+  to {
+    transform: translateX(calc(-50% + var(--c) * 34%)) translateY(calc(var(--c2) * 2%))
+      rotate(calc(var(--c) * 4deg));
+    opacity: 1;
+  }
 }
 /* Hover estable: la caja no se mueve; sube la .carta interior */
 .og__handrow--abanico .og__slot .carta {
@@ -628,31 +609,6 @@
   transform: translateY(-24px) scale(1.06);
   filter: brightness(1.08) drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5));
 }
-/* Header de la mano: título + toggle de vista */
-.og__handhdr {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-}
-.og__handtoggle {
-  margin: 4px 0 0;
-  background: rgba(12, 33, 20, 0.85);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px 10px 0 0;
-  border-bottom: none;
-  padding: 5px 12px 4px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--text-light);
-  cursor: pointer;
-}
-.og__handtoggle:hover {
-  background: rgba(20, 52, 33, 0.95);
-}
-
 /* --- Cartas --- */
 .carta {
   position: relative;

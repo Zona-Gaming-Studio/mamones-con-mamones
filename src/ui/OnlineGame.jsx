@@ -142,7 +142,6 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const [metaSrv, setMetaSrv] = useState(null); // meta congelada por el server
   const [players, setPlayers] = useState([]);
   const [hand, setHand] = useState([]);
-  const [handView, setHandView] = useState("abanico"); // "abanico" (encimadas) | "completas"
   const [mesa, setMesa] = useState([]);
   const [flavores, setFlavores] = useState({});
   const [jugaron, setJugaron] = useState([]);
@@ -622,6 +621,8 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
             const handler = clickable ? () => (pasoPeor ? elegirPeor(m.id) : elegirGanadora(m.id)) : undefined;
             return (
               <div key={m.id} className="og__jugada">
+                {/* Corona detrás de la carta ganadora (asoma por arriba); la carta va encima. */}
+                {m.es_ganadora && <img className="og__crown" src="/assets/corona.webp" alt="Ganadora" />}
                 <Carta
                   color="roja"
                   titulo={m.carta}
@@ -690,19 +691,8 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
       {/* Mano del jugador */}
       {!esJuez && fase !== "terminado" && (
         <div className="og__hand">
-          <div className="og__handhdr">
-            <p className="og__handtab">Tu mano</p>
-            <button
-              type="button"
-              className="og__handtoggle"
-              onClick={() => setHandView((v) => (v === "abanico" ? "completas" : "abanico"))}
-              aria-label="Cambiar vista de la mano"
-            >
-              {handView === "abanico" ? "🃏 Abanico" : "🂠 Completas"}
-            </button>
-          </div>
           <p className="og__handhint">Mantén pulsada una carta para leerla</p>
-          <div className={`og__handrow og__handrow--${handView}`} style={{ "--n": hand.length }}>
+          <div className="og__handrow og__handrow--abanico" style={{ "--n": hand.length }}>
             {(() => {
               const puedeJugar = fase === "jugando" && !yaJugue && !congelado;
               // Cada carta va envuelta en un .og__slot (caja-pivote fija): en abanico la carta
@@ -733,18 +723,6 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
                   )}
                 </div>
               );
-              // Completas: dos líneas, la de arriba con más cartas (7→4/3, 8→4/4, 9→5/4…)
-              if (handView === "completas") {
-                const topN = Math.ceil(hand.length / 2);
-                return (
-                  <>
-                    <div className="og__handline">{hand.slice(0, topN).map((c, k) => slot(c, k))}</div>
-                    {hand.length > topN && (
-                      <div className="og__handline">{hand.slice(topN).map((c, k) => slot(c, topN + k))}</div>
-                    )}
-                  </>
-                );
-              }
               // Abanico: lista plana de slots (posicionados en arco por CSS)
               return hand.map((c, i) => slot(c, i));
             })()}
