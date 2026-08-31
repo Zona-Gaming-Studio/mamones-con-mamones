@@ -40,7 +40,7 @@ describe("jugarCarta", () => {
     const { estado, ctx } = partidaIniciada(4);
     jugarTodos(estado, ctx);
     expect(estado.fase).toBe("juzgando");
-    expect(estado.faseHasta).toBe(ctx.now() + 45_000);
+    expect(estado.faseHasta).toBe(ctx.now() + 60_000);
     expect(estado.mesa).toHaveLength(3);
   });
 

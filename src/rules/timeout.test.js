@@ -10,7 +10,7 @@ import { jugarTodos, noJueces, partidaIniciada } from "./test-utils.js";
 describe("resolverTimeout", () => {
   it("no hace nada antes del deadline", () => {
     const { estado, ctx } = partidaIniciada(4);
-    ctx.avanzar(59_000);
+    ctx.avanzar(44_000); // < 45s de 'jugando' → aún no vence
     expect(resolverTimeout(estado, ctx)).toBe(false);
     expect(estado.fase).toBe("jugando");
     expect(estado.ronda).toBe(1);
@@ -24,7 +24,7 @@ describe("resolverTimeout", () => {
     expect(estado.fase).toBe("jugando");
     expect(estado.ronda).toBe(2);
     expect(estado.cartaVerde).not.toBe(verdeAnterior);
-    expect(estado.faseHasta).toBe(ctx.now() + 60_000);
+    expect(estado.faseHasta).toBe(ctx.now() + 45_000);
     expect(estado.historial).toHaveLength(0);
   });
 
@@ -52,14 +52,14 @@ describe("resolverTimeout", () => {
     resolverTimeout(estado, ctx);
     expect(estado.fase).toBe("juzgando");
     expect(estado.mesa).toHaveLength(2); // nadie recuperó cartas: timeout ≠ cierre por completitud
-    expect(estado.faseHasta).toBe(ctx.now() + 45_000);
+    expect(estado.faseHasta).toBe(ctx.now() + 60_000);
   });
 
   it("juzgando: el Juez lento queda penalizado y pierde su próximo envío", () => {
     const { estado, ctx } = partidaIniciada(4);
     const juezLento = estado.juezUid;
     jugarTodos(estado, ctx);
-    ctx.avanzar(45_000);
+    ctx.avanzar(60_000);
     resolverTimeout(estado, ctx);
     expect(estado.fase).toBe("jugando");
     expect(estado.ronda).toBe(2);
@@ -80,7 +80,7 @@ describe("resolverTimeout", () => {
     for (const j of estado.jugadores) {
       if (j.uid !== juezLento) j.conectado = false;
     }
-    ctx.avanzar(45_000);
+    ctx.avanzar(60_000);
     resolverTimeout(estado, ctx);
     expect(estado.juezUid).toBe(juezLento);
     const j = jugador(estado, juezLento);

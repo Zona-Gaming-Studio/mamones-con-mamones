@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../net/api.js";
 import { initSfx, isSfxEnabled, setSfxEnabled, spinTicks, beep, beepUrge, ding } from "../lib/sfx.js";
 import Recap from "./Recap.jsx";
+import CartaArte from "./CartaArte.jsx";
 import "./OnlineGame.css";
 
 // ¿El dispositivo tiene mouse con hover? (escritorio sí, móvil táctil no)
@@ -65,7 +66,7 @@ const REACCIONES = [
   { emoji: "❤️", nombre: "corazón" },
 ];
 
-function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganadora, peor, anon, onLongPress, onLongPressEnd }) {
+function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganadora, peor, anon, onLongPress, onLongPressEnd, style }) {
   const timer = useRef(null);
   const longRef = useRef(false);
 
@@ -96,6 +97,7 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
   return (
     <button
       className={cls}
+      style={style}
       onClick={handleClick}
       onDoubleClick={onDoubleClick}
       onPointerDown={startPress}
@@ -105,17 +107,33 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
       onMouseLeave={() => CAN_HOVER && onLongPressEnd && onLongPressEnd()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {anon ? (
-        <span className="carta__dorso">
-          <img className="carta__logo" src="/assets/logo.png" alt="" />
-        </span>
-      ) : (
-        <>
-          <span className="carta__titulo">{titulo}</span>
-          {flavor && <span className="carta__flavor">{flavor}</span>}
-        </>
-      )}
+      <CartaArte color={color} texto={titulo} flavor={flavor} anon={anon} />
     </button>
+  );
+}
+
+const CARD_RATIO = 2485 / 1623; // alto/ancho del lienzo de la carta
+
+// Pila de cartas verdes ganadas (estilo Apples to Apples): superpuestas hacia la
+// derecha dejando ver solo el borde IZQUIERDO de cada una (donde va el título);
+// la última se ve entera. `miniH` = alto en px; `reveal` = fracción del ancho
+// visible por carta tapada (~0.26 ≈ franja del título).
+function GreenStack({ greens, miniH, reveal = 0.26 }) {
+  if (!greens?.length) return null;
+  const w = miniH / CARD_RATIO;
+  const stride = w * reveal;
+  return (
+    <span className="og__gstack" style={{ height: miniH, width: w + (greens.length - 1) * stride }}>
+      {greens.map((texto, i) => (
+        <span
+          key={i}
+          className="carta carta--verde og__gmini"
+          style={{ width: w, height: miniH, left: i * stride, zIndex: i }}
+        >
+          <CartaArte color="verde" texto={texto} />
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -182,6 +200,18 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const congSecs = congelado ? Math.ceil((congeladoHasta - nowTs) / 1000) : 0;
   const yaJugue = misJugadas >= cartasAJugar;
   const meta = metaSrv ?? (sala?.config?.meta || metaGanar(players.length));
+
+  // Verdes ganadas por jugador, derivadas del historial {ronda, verde, ganadorUid}.
+  const [greensOpen, setGreensOpen] = useState(false); // overlay de verdes ganadas
+  const greensByUid = useMemo(() => {
+    const m = {};
+    (sala?.historial || []).forEach((h) => {
+      if (!h?.ganadorUid || !h?.verde) return;
+      (m[h.ganadorUid] ||= []).push(h.verde);
+    });
+    return m;
+  }, [sala?.historial]);
+  const hayVerdes = Object.keys(greensByUid).length > 0;
 
   const deadline = sala?.fase_hasta ?? null; // ms de epoch (snapshot)
   const secsLeft = deadline ? Math.max(0, Math.ceil((deadline - nowTs) / 1000)) : null;
@@ -458,11 +488,23 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
         </span>
       </header>
 
-      <div className="og__scores">
+      <div
+        className={`og__scores ${hayVerdes ? "og__scores--click" : ""}`}
+        onClick={hayVerdes ? () => setGreensOpen(true) : undefined}
+        role={hayVerdes ? "button" : undefined}
+        tabIndex={hayVerdes ? 0 : undefined}
+        title={hayVerdes ? "Ver las cartas verdes ganadas" : undefined}
+        onKeyDown={
+          hayVerdes
+            ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setGreensOpen(true))
+            : undefined
+        }
+      >
         {players.map((p) => {
           const isJuez = p.uid === sala.juez_uid;
           const yo = p.uid === uid;
           const jugo = jugaron.includes(p.uid);
+          const greens = greensByUid[p.uid] || [];
           let estado = null;
           if (isJuez) estado = "⚖️ Juez";
           else if (fase === "jugando") estado = jugo ? "✓ jugó" : "pensando…";
@@ -474,6 +516,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
                 {yo ? " (tú)" : ""}
               </span>
               {estado && <span className="chip__estado">{estado}</span>}
+              {greens.length > 0 && <GreenStack greens={greens} miniH={24} />}
             </span>
           );
         })}
@@ -578,6 +621,8 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
             const handler = clickable ? () => (pasoPeor ? elegirPeor(m.id) : elegirGanadora(m.id)) : undefined;
             return (
               <div key={m.id} className="og__jugada">
+                {/* Corona detrás de la carta ganadora (asoma por arriba); la carta va encima. */}
+                {m.es_ganadora && <img className="og__crown" src="/assets/corona.webp" alt="Ganadora" />}
                 <Carta
                   color="roja"
                   titulo={m.carta}
@@ -646,40 +691,41 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
       {/* Mano del jugador */}
       {!esJuez && fase !== "terminado" && (
         <div className="og__hand">
-          <p className="og__handtab">Tu mano</p>
           <p className="og__handhint">Mantén pulsada una carta para leerla</p>
-          <div className="og__handrow">
-            {hand.map((c, i) => {
+          <div className="og__handrow og__handrow--abanico" style={{ "--n": hand.length }}>
+            {(() => {
               const puedeJugar = fase === "jugando" && !yaJugue && !congelado;
-              if (faceDown) {
-                const espiada = peek[i];
-                return (
-                  <Carta
-                    key={c}
-                    color="roja"
-                    titulo={c}
-                    flavor={flavores[c]}
-                    anon={!espiada}
-                    onClick={() => setPeek((p) => (p[i] ? {} : { [i]: true }))}
-                    onDoubleClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
-                    onLongPress={setPreview}
-                    onLongPressEnd={cerrarPreview}
-                  />
-                );
-              }
-              return (
-                <Carta
-                  key={c}
-                  color="roja"
-                  titulo={c}
-                  flavor={flavores[c]}
-                  onClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
-                  disabled={!puedeJugar}
-                  onLongPress={setPreview}
-                  onLongPressEnd={cerrarPreview}
-                />
+              // Cada carta va envuelta en un .og__slot (caja-pivote fija): en abanico la carta
+              // interior flota al hover sin mover la caja (sin flicker); en completas es el pivote del reparto.
+              const slot = (c, i) => (
+                <div className="og__slot" style={{ "--i": i, "--n": hand.length }} key={c}>
+                  {faceDown ? (
+                    <Carta
+                      color="roja"
+                      titulo={c}
+                      flavor={flavores[c]}
+                      anon={!peek[i]}
+                      onClick={() => setPeek((p) => (p[i] ? {} : { [i]: true }))}
+                      onDoubleClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
+                      onLongPress={setPreview}
+                      onLongPressEnd={cerrarPreview}
+                    />
+                  ) : (
+                    <Carta
+                      color="roja"
+                      titulo={c}
+                      flavor={flavores[c]}
+                      onClick={puedeJugar ? (e) => jugarConAnim(c, e.currentTarget) : undefined}
+                      disabled={!puedeJugar}
+                      onLongPress={setPreview}
+                      onLongPressEnd={cerrarPreview}
+                    />
+                  )}
+                </div>
               );
-            })}
+              // Abanico: lista plana de slots (posicionados en arco por CSS)
+              return hand.map((c, i) => slot(c, i));
+            })()}
           </div>
         </div>
       )}
@@ -687,11 +733,50 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
       {/* Vista ampliada al mantener pulsada una carta.
           El overlay tiene pointer-events:none (el cierre vive en el endPress de la carta),
           así que no lleva handlers propios. */}
+      {/* Overlay de verdes ganadas: se abre tocando el marcador */}
+      {greensOpen && (
+        <div className="og__greens" onClick={() => setGreensOpen(false)}>
+          <div className="og__greens-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="og__greens-head">
+              <h3 className="og__greens-title">Cartas verdes ganadas · Meta {meta}</h3>
+              <button className="og__greens-x" onClick={() => setGreensOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="og__greens-body">
+              {players.map((p) => {
+                const greens = greensByUid[p.uid] || [];
+                const yo = p.uid === uid;
+                return (
+                  <div key={p.uid} className="og__greens-row">
+                    <div className="og__greens-who">
+                      <span className="og__greens-name">
+                        {p.nombre}
+                        {yo ? " (tú)" : ""}
+                      </span>
+                      <span className="og__greens-cnt">
+                        {p.puntos}/{meta}
+                      </span>
+                    </div>
+                    <div className="og__greens-cards">
+                      {greens.length > 0 ? (
+                        <GreenStack greens={greens} miniH={92} reveal={0.32} />
+                      ) : (
+                        <span className="og__greens-none">Sin verdes aún</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {preview && (
         <div className="og__preview">
-          <div className={`og__preview-card og__preview-card--${preview.color}`}>
-            <span className="og__preview-titulo">{preview.titulo}</span>
-            {preview.flavor && <span className="og__preview-flavor">{preview.flavor}</span>}
+          <div className={`carta carta--${preview.color} og__preview-card`}>
+            <CartaArte color={preview.color} texto={preview.titulo} flavor={preview.flavor} />
           </div>
         </div>
       )}
@@ -702,7 +787,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
           {myPlayed.map((c, i) => (
             <div key={`me-${i}`} className="og__pilecard" style={pileCardStyle(i)}>
               <div className="carta carta--roja">
-                <span className="carta__titulo">{c}</span>
+                <CartaArte color="roja" texto={c} flavor={flavores[c]} />
               </div>
             </div>
           ))}
@@ -713,9 +798,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
               style={pileCardStyle(myPlayed.length + i)}
             >
               <div className="carta carta--roja">
-                <span className="carta__dorso">
-                  <img className="carta__logo" src="/assets/logo.png" alt="" />
-                </span>
+                <CartaArte color="roja" anon />
               </div>
             </div>
           ))}
@@ -736,8 +819,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
           }}
         >
           <div className="carta carta--roja">
-            <span className="carta__titulo">{flying.carta}</span>
-            {flying.flavor && <span className="carta__flavor">{flying.flavor}</span>}
+            <CartaArte color="roja" texto={flying.carta} flavor={flying.flavor} />
           </div>
         </div>
       )}

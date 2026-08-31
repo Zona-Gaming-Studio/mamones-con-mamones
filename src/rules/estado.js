@@ -8,9 +8,10 @@
 // esquema original: manos y mesa guardan el texto, no un id).
 
 // Duraciones de fase en ms (ex-trigger tg_salas_fase_hasta).
+// jugando = jugadores eligen carta (45s); juzgando = el Juez elige (60s).
 export const DURACIONES = {
-  jugando: 60_000,
-  juzgando: 45_000,
+  jugando: 45_000,
+  juzgando: 60_000,
   resultado: 25_000,
 };
 
