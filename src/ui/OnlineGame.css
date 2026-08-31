@@ -305,6 +305,128 @@
   color: var(--text-muted);
   font-size: 12px;
 }
+.og__scores--click {
+  cursor: pointer;
+}
+.og__scores--click:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+/* Pila de verdes ganadas (Apples to Apples): mini-cartas superpuestas que dejan
+   ver solo el borde izquierdo (el título) de las tapadas; la última entera. */
+.og__gstack {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+/* Compuesto .carta.og__gmini para ganarle en especificidad a .carta (que va
+   más abajo en el archivo y si no sobrescribiría position/width). */
+.carta.og__gmini {
+  position: absolute;
+  top: 0;
+  display: block;
+  width: auto; /* el alto/ancho reales van inline; anula el 116px fijo de .carta */
+  pointer-events: none; /* decorativa: el clic pasa al marcador */
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 211, 92, 0.85),
+    0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Overlay de verdes ganadas (toca el marcador) */
+.og__greens {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.82);
+  animation: ruletaPop 0.16s ease-out;
+}
+.og__greens-panel {
+  width: min(700px, 96vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 33, 20, 0.97);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+.og__greens-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.og__greens-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 21px;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+}
+.og__greens-x {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text-light);
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.og__greens-body {
+  overflow-y: auto;
+  padding: 4px 16px 12px;
+}
+.og__greens-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.og__greens-row:last-child {
+  border-bottom: none;
+}
+.og__greens-who {
+  flex: none;
+  width: 118px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.og__greens-name {
+  font-weight: 700;
+  color: var(--text-light);
+}
+.og__greens-cnt {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.og__greens-cards {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+.og__greens-none {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 14px;
+}
 
 .og--loading {
   justify-content: center;
@@ -541,11 +663,17 @@
   border: none;
   padding: 0;
   background-color: #143015;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  /* Separación figura-fondo: el verde de la carta (#1A4629 horneado) casi iguala al
+     fieltro (--felt-*), así que la silueta se funde. Filo dorado (keyline) que traza
+     el borde + sombra proyectada en 2 capas para que flote sobre la mesa. */
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 211, 92, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 9px 16px rgba(0, 0, 0, 0.45);
   cursor: default;
   overflow: hidden;
   color: #173a17;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 .og__green .carta {
   width: 150px;
@@ -585,8 +713,11 @@
   transform: scale(0.96); /* feedback de pulsación en táctil */
 }
 .carta--gana {
-  /* Borde dorado que sigue el border-radius de la carta (outline no lo respeta). */
-  box-shadow: inset 0 0 0 4px var(--gold), 0 6px 14px rgba(0, 0, 0, 0.35);
+  /* Borde dorado grueso (sigue el border-radius) + la misma sombra que flota. */
+  box-shadow:
+    inset 0 0 0 4px var(--gold),
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 9px 16px rgba(0, 0, 0, 0.45);
 }
 .carta:disabled {
   cursor: default;
@@ -636,12 +767,19 @@
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
 }
 .carta--peor {
-  box-shadow: inset 0 0 0 4px #c0392b, 0 6px 14px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    inset 0 0 0 4px #c0392b,
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 9px 16px rgba(0, 0, 0, 0.45);
 }
 .carta--oculta {
   background-image: none;
   background-color: #143015;
   border: 2px solid var(--panel-border);
+  /* Ya tiene borde propio: sin keyline oro, solo la sombra que flota. */
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 9px 16px rgba(0, 0, 0, 0.45);
 }
 .carta--oculta .carta__dorso {
   background: #143015;

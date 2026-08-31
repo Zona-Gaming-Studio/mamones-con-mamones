@@ -20,8 +20,53 @@
   font-style: italic;
   font-display: swap;
 }
+/* SemiBold Italic: flavor de las cartas (legibilidad a tamaño pequeño en móvil). */
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-600-Italic.woff2) format("woff2");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+/* Teko 700: título/píldora de las cartas (condensada, reemplazó a Bebas en las cartas). */
+@font-face {
+  font-family: "Teko";
+  src: url(/fonts/Teko-700.woff2) format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Montserrat VERTICAL (upright): fuente de texto de la UI (misma familia que el
+   flavor de las cartas, para amarrar la identidad). 400 texto, 600/700 énfasis. */
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-400.ttf) format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-600.ttf) format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url(/fonts/Montserrat-700.ttf) format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
+  /* Sistema tipográfico (mismas fuentes de las cartas):
+     display = Bebas Neue (títulos/botones, mayúsculas con impacto);
+     ui = Montserrat vertical (texto corrido, nombres, mensajes). */
+  --font-display: "Bebas Neue", "Segoe UI", system-ui, sans-serif;
+  --font-ui: "Montserrat", "Segoe UI", system-ui, sans-serif;
+
   --felt-top: #1f4d2e;
   --felt-bottom: #10301d;
   --gold: #ffd35c;
@@ -45,12 +90,58 @@ body,
   height: 100%;
 }
 
+html,
 body {
+  overscroll-behavior: none; /* sin rubber-band / pull-to-refresh en móvil */
+}
+
+body {
+  /* Pantalla FIJA en móvil: nada de scroll de página; los paneles que lo necesiten
+     hacen scroll interno (overflow propio). position:fixed evita el scroll por la
+     barra de direcciones y el pan del lienzo. */
+  position: fixed;
+  inset: 0;
   overflow: hidden;
   background: var(--felt-bottom);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
   color: var(--text-light);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Lienzo de Phaser: el navegador no captura gestos táctiles (los maneja el juego)
+   → no arrastra ni hace scroll la página al jugar en móvil. */
+canvas {
+  touch-action: none;
+}
+
+/* Títulos y botones en la fuente display (Bebas). Bebas es alta y estrecha, así
+   que un poco de tracking la asienta. Los tamaños puntuales los fija cada CSS. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.5px;
+  font-weight: 400;
+}
+
+/* Fuente display (Bebas) para botones y títulos de la UI (clases globales, no
+   CSS-modules). Bebas solo trae peso 400 → forzamos 400 para evitar falso negrita. */
+.btn,
+.btn__text,
+.menu__title,
+.como__title,
+.acerca__title,
+.admin__title,
+.lcard__title,
+.players__title,
+.cfg__title,
+.topbar__title {
+  font-family: var(--font-display);
+  letter-spacing: 0.5px;
+  font-weight: 400;
+}
+.btn {
+  letter-spacing: 0.8px;
 }
 
 #root {

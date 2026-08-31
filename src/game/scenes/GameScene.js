@@ -10,9 +10,22 @@
 // en handleResize() cuando la ventana cambia de tamaño u orientación.
 import Phaser from "phaser";
 import { GameData } from "../data/cards.js";
+import { cardFaceCanvas, reversoCanvas, flavorFor } from "../../ui/cardTexture.js";
 
 const HAND_SIZE = 7;
-const CARD_RATIO = 1264 / 848; // alto/ancho de las plantillas (verticales).
+const CARD_RATIO = 2485 / 1623; // alto/ancho de las cartas POR CAPAS (1623×2485).
+// Ancho al que se rasteriza la cara/reverso. Se cachea por texto y se reusa a
+// cualquier tamaño, así que se dimensiona para el uso MÁS grande: la carta del
+// modal en móvil (DPR alto) llega a ~700px de dispositivo. El fondo WebP es 1080w,
+// así que 640 no lo sobre-muestrea. (Ver pixelación: canvas a resolución de
+// dispositivo en config.js + esta textura mayor.)
+const TEX_PX = 640;
+
+// Sistema tipográfico (mismas fuentes de las cartas, self-hosted en public/fonts):
+// UI = Montserrat vertical (texto legible, nombres, mensajes); DISPLAY = Bebas Neue
+// (títulos, botones, captions — mayúsculas con impacto). Precargadas en el Preloader.
+const FONT_UI = "Montserrat, 'Segoe UI', system-ui, sans-serif";
+const FONT_DISPLAY = "'Bebas Neue', 'Segoe UI', sans-serif";
 
 // Movimiento reducido (paridad con el online): acorta el giro de la ruleta.
 const REDUCED_MOTION =
@@ -44,9 +57,6 @@ const COLORS = {
   textMuted: "#9fd6a3",
   dark: "#16331f",
 };
-
-const TITLE_GREEN = "#173a17"; // verde oscuro para la verde
-const TITLE_RED = "#8a1c10"; // rojo oscuro para las amarillas
 
 // Las 6 opciones de "La Ruleta del Mamón Amargo" (modo Amarga).
 const RULETA_EFFECTS = {
@@ -129,20 +139,32 @@ export default class GameScene extends Phaser.Scene {
     this._animatingPlay = false; // bloquea jugar mientras una carta vuela al centro
     this._pile = []; // cartas visibles en el montoncito del centro
     this._pileCount = 0; // huecos usados del montoncito (para el desorden)
+
+    // Gesto de carta (mano o juzgar): tap→modal o arrastrar. mode "play" | "judge".
+    this._cardPress = null; // { mode, i, text, card, x, y } press pendiente
+    this._cardDrag = null; // { mode, i, text, card, orig } arrastre en curso
+    this.confirmLayer = null; // modal genérico (independiente de this.ui)
+
+    // Descarte del juez (Clásica): índices de submissions descartados esta ronda.
+    this.discardedIdx = new Set();
+    this._lastDiscarded = null; // para animar la última carta que cae al 🗑️
+    this.discardZone = null; // { top, bottom, cx, w } zona de descarte (destino de arrastre)
+
+    // La mano es siempre abanico (solape izq→der; se quitó la vista "completas").
+    this._animateHandEntry = true; // anima el reparto solo al iniciar ronda
   }
 
   create() {
     this.computeLayout();
 
-    // Generar versiones de las plantillas con esquinas redondeadas (una sola vez).
-    // Esquinas redondeadas fijas (~10px en pantalla, igual que el borde de selección).
-    this.greenTex = this.ensureRoundedTexture("plantillaVerde", "plantillaVerdeRound", 10 / this.greenW);
-    this.redTex = this.ensureRoundedTexture("plantillaAmarilla", "plantillaAmarillaRound", 10 / this.cardW);
+    // Caché de texturas de cartas POR CAPAS (cara/reverso), y de promesas en vuelo.
+    this._texPromises = {};
 
     // Capa estática (fondo + cabecera) detrás de la capa dinámica (ui).
     this.staticLayer = this.add.container(0, 0);
     this.ui = this.add.container(0, 0);
     this.animLayer = this.add.container(0, 0); // cartas volando al centro (sobre la UI)
+    this.hud = this.add.container(0, 0); // temporizador de ronda (persiste entre renders)
     this.drawStatic();
 
     this.setupGame();
@@ -163,7 +185,8 @@ export default class GameScene extends Phaser.Scene {
   // Se registra una sola vez; opera solo en la fase "play" si hay scroll activo.
   setupHandScrollInput() {
     const canScroll = () =>
-      this.phase === "play" && this.handScroll && this.handScroll.enabled && this.handContainer;
+      this.phase === "play" && this.handScroll && this.handScroll.enabled && this.handContainer &&
+      !this.confirmLayer && !this._cardDrag;
 
     this.input.on("pointerdown", (p) => {
       if (!canScroll() || !this.inHandBand(p)) return;
@@ -176,6 +199,27 @@ export default class GameScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (p) => {
+      // (1) Arrastre de una carta en curso: la carta-clon sigue el puntero.
+      if (this._cardDrag) {
+        this._dragCardFollow(p);
+        return;
+      }
+      // (2) Clasificar un press pendiente sobre una carta: vertical-arriba = arrastrar
+      //     para jugar; horizontal = es scroll (se descarta el press).
+      if (this._cardPress) {
+        const cdx = p.x - this._cardPress.x;
+        const cdy = p.y - this._cardPress.y;
+        if (Math.abs(cdx) > 8 || Math.abs(cdy) > 8) {
+          // play = arrastrar ARRIBA (al centro); judge = arrastrar ABAJO (al 🗑️).
+          const wantDir = this._cardPress.mode === "judge" ? cdy > 0 : cdy < 0;
+          if (Math.abs(cdy) >= Math.abs(cdx) && wantDir) {
+            this._beginCardDrag(p);
+            return;
+          }
+          this._cardPress = null; // horizontal → deja que el scroll lo maneje
+        }
+      }
+      // (3) Scroll horizontal de la mano.
       if (!this._dragging || !this.handContainer) return;
       const dx = p.x - this._dragStartX;
       if (Math.abs(dx) > 6) this._handDragged = true; // distinguir arrastre de toque
@@ -190,7 +234,23 @@ export default class GameScene extends Phaser.Scene {
       this.updateScrollThumb();
     });
 
-    this.input.on("pointerup", () => {
+    this.input.on("pointerup", (p) => {
+      // (1) Soltar un arrastre de carta: sobre el centro = jugar; sobre la mano = cancelar.
+      if (this._cardDrag) {
+        this._endCardDrag(p);
+        this._dragging = false;
+        return;
+      }
+      // (2) Tap sobre una carta (press sin arrastre) → modal (jugar o juzgar).
+      if (this._cardPress && !this._handDragged) {
+        const { mode, i, text } = this._cardPress;
+        this._cardPress = null;
+        this._dragging = false;
+        if (mode === "judge") this.openJudgeConfirm(i, text);
+        else this.openPlayConfirm(i, text);
+        return;
+      }
+      this._cardPress = null;
       this._dragging = false;
       // Limitar el "fling" inicial para que no se dispare demasiado rápido.
       this._handVel = Phaser.Math.Clamp(this._handVel || 0, -60, 60);
@@ -242,48 +302,62 @@ export default class GameScene extends Phaser.Scene {
 
   // Calcula tamaños y anclas verticales según el tamaño actual de la pantalla.
   computeLayout() {
+    // Diseño FIJO (ver config.js): W/H son 1080×1920 SIEMPRE y Phaser (Scale.FIT)
+    // escala todo el canvas a la pantalla. `dpr` = cuántas veces el canvas de diseño
+    // es más grande que un teléfono de referencia (REF≈400px), para escalar las
+    // constantes en px "de teléfono" (topes de carta, anclas, todo lo que pasa por
+    // f()) al lienzo grande. Como W es fijo, dpr y el layout son constantes.
     this.W = this.scale.width;
     this.H = this.scale.height;
+    const REF = 400; // ancho de teléfono de referencia para el que se afinó el layout
+    this.dpr = this.W / REF;
 
     this.isPortrait = this.H > this.W;
 
-    // Escala global de la UI (fuentes, paneles) según el ancho.
-    this.uiScale = Phaser.Math.Clamp(this.W / 1280, 0.75, 1.15);
+    // Escala global de la UI (fuentes, paneles). cssW = ancho "de teléfono"; f(px)
+    // sale escalado al lienzo de diseño (1080).
+    const cssW = this.W / this.dpr;
+    this.uiScale = Phaser.Math.Clamp(cssW / 1280, 0.75, 1.15) * this.dpr;
 
     // Tamaño de carta: cómodo según la pantalla. Ya NO hace falta que entren las
     // 7 a lo ancho (la mano tiene scroll), así que en retrato son más grandes.
-    this.handGap = Math.max(8, this.W * 0.012);
-    const heightFrac = this.isPortrait ? 0.2 : 0.26; // alto máx. relativo a la pantalla
-    const widthShareFrac = this.isPortrait ? 0.42 : 0.28; // ancho máx. de una carta
+    this.handGap = Math.max(8 * this.dpr, this.W * 0.012);
+    const heightFrac = this.isPortrait ? 0.25 : 0.26; // alto máx. relativo a la pantalla
+    const widthShareFrac = this.isPortrait ? 0.5 : 0.28; // ancho máx. de una carta
+    const capW = (this.isPortrait ? 170 : 150) * this.dpr; // en retrato las dejamos más grandes
     const byHeight = (this.H * heightFrac) / CARD_RATIO;
     const byWidthShare = this.W * widthShareFrac;
-    this.cardW = Math.max(46, Math.min(byHeight, byWidthShare, 150));
+    this.cardW = Math.max(46 * this.dpr, Math.min(byHeight, byWidthShare, capW));
     this.cardH = this.cardW * CARD_RATIO;
-    this.cardFont = Math.max(10, Math.round(this.cardW * 0.135));
 
     // La carta verde es un poco más grande.
     this.greenW = this.cardW * 1.08;
     this.greenH = this.greenW * CARD_RATIO;
-    this.greenFont = Math.max(13, Math.round(this.greenW * 0.16));
+    this.greenFont = Math.max(13 * this.dpr, Math.round(this.greenW * 0.16)); // solo para el placeholder 🟢?
 
     // En retrato el marcador es una tira de chips bajo la cabecera (reserva alto);
     // en horizontal va en un panel a la derecha (no ocupa alto del centro).
     const nPlayers = (this.players && this.players.length) || 4;
     if (this.isPortrait) {
-      const perRow = Math.max(1, Math.floor(this.W / this.f(100)));
+      const perRow = Math.max(1, Math.floor(this.W / this.f(115)));
       const rows = Math.ceil(nPlayers / perRow);
       this.scoreH = rows * this.f(30) + this.f(6);
     } else {
       this.scoreH = 0;
     }
 
-    // Anclas verticales.
-    this.yHeader = Math.max(44, Math.min(56, this.H * 0.085));
-    this.yGreen = this.yHeader + this.scoreH + this.greenH / 2 + 12;
-    this.yStatus = this.yGreen + this.greenH / 2 + this.f(22);
-    this.yHand = this.H - this.cardH / 2 - 14;
+    // Anclas verticales (topes en px CSS → × dpr para el mundo en px de dispositivo).
+    this.yHeader = Math.max(44 * this.dpr, Math.min(56 * this.dpr, this.H * 0.085));
+    this.yGreen = this.yHeader + this.scoreH + this.greenH / 2 + 12 * this.dpr;
+    // Holgura amplia bajo la carta verde: el banner puede ser de 2 líneas (crece hacia
+    // arriba desde su centro) y no debe montarse sobre la carta verde.
+    this.yStatus = this.yGreen + this.greenH / 2 + this.f(48);
+    // La mano (abanico) se extiende ~0.80·h por debajo de su centro (extremos del arco
+    // ~0.2·h + media carta + margen de rotación ±12°). Reserva justa + margen mínimo
+    // abajo → la mano baja un pelín (menos choque con la pila) sin cortarse.
+    this.yHand = this.H - this.cardH * 0.8 - this.f(2);
     this.yButton = this.H - this.f(40);
-    // Fila central (jugadas) entre el estado y la zona de la mano.
+    // Fila central (jugadas) entre el estado y el borde superior de la mano.
     this.yCenter = (this.yStatus + this.f(20) + (this.yHand - this.cardH / 2)) / 2;
   }
 
@@ -292,24 +366,17 @@ export default class GameScene extends Phaser.Scene {
     return Math.round(px * this.uiScale);
   }
 
-  // Crea una textura con las esquinas redondeadas a partir de otra, recortando
-  // la imagen contra un rectángulo redondeado en un canvas. Devuelve la llave a
-  // usar (la redondeada si se pudo crear; si no, la original como respaldo).
-  ensureRoundedTexture(srcKey, outKey, radiusFrac) {
-    if (this.textures.exists(outKey)) return outKey;
-
-    const src = this.textures.get(srcKey).getSourceImage();
-    if (!src || !src.width) return srcKey;
-
-    const w = src.width;
-    const h = src.height;
-    const canvasTex = this.textures.createCanvas(outKey, w, h);
-    if (!canvasTex) return srcKey;
-
-    const ctx = canvasTex.getContext();
-    const r = Math.min(w, h) * radiusFrac;
-
+  // ---------- Texturas de cartas POR CAPAS (cara/reverso) ----------
+  // Placeholder de color base (rect redondeado) mientras carga la textura real.
+  ensurePlaceholderTexture(color) {
+    const key = `mcm:ph:${color}`;
+    if (this.textures.exists(key)) return key;
+    const w = 162, h = 248, r = 12;
+    const t = this.textures.createCanvas(key, w, h);
+    if (!t) return key;
+    const ctx = t.getContext();
     ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = color === "verde" ? "#1A4629" : "#F39200";
     ctx.beginPath();
     ctx.moveTo(r, 0);
     ctx.arcTo(w, 0, w, h, r);
@@ -317,11 +384,76 @@ export default class GameScene extends Phaser.Scene {
     ctx.arcTo(0, h, 0, 0, r);
     ctx.arcTo(0, 0, w, 0, r);
     ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(src, 0, 0, w, h);
+    ctx.fill();
+    t.refresh();
+    return key;
+  }
 
-    canvasTex.refresh(); // sube la textura a la GPU
-    return outKey;
+  cardTextureKey(color, texto) {
+    return `mcm:${color}:${texto}`;
+  }
+  reversoTextureKey(color) {
+    return `mcm:rev:${color}`;
+  }
+
+  // Construye (una vez) la textura de la CARA por capas; resuelve con la llave o null.
+  requestCardTexture(color, texto) {
+    const key = this.cardTextureKey(color, texto);
+    if (this.textures.exists(key)) return Promise.resolve(key);
+    if (!this._texPromises[key]) {
+      this._texPromises[key] = cardFaceCanvas({ color, texto, flavor: flavorFor(color, texto), pxW: TEX_PX })
+        .then((canvas) => {
+          if (!this.textures.exists(key)) this.textures.addCanvas(key, canvas);
+          return key;
+        })
+        .catch((e) => {
+          console.warn("cardTexture", color, texto, e);
+          return null;
+        });
+    }
+    return this._texPromises[key];
+  }
+
+  // Construye (una vez) la textura del REVERSO por color; resuelve con la llave o null.
+  requestReversoTexture(color) {
+    const key = this.reversoTextureKey(color);
+    if (this.textures.exists(key)) return Promise.resolve(key);
+    if (!this._texPromises[key]) {
+      this._texPromises[key] = reversoCanvas({ color, pxW: TEX_PX })
+        .then((canvas) => {
+          if (!this.textures.exists(key)) this.textures.addCanvas(key, canvas);
+          return key;
+        })
+        .catch((e) => {
+          console.warn("reversoTexture", color, e);
+          return null;
+        });
+    }
+    return this._texPromises[key];
+  }
+
+  // Aplica la cara por capas a una imagen: síncrono si ya está en caché; si no,
+  // muestra el placeholder y la intercambia cuando termina (guardando por destrucción).
+  applyCardTexture(img, color, texto, w, h) {
+    const key = this.cardTextureKey(color, texto);
+    if (this.textures.exists(key)) {
+      img.setTexture(key).setDisplaySize(w, h);
+      return;
+    }
+    this.requestCardTexture(color, texto).then((k) => {
+      if (k && img.scene) img.setTexture(k).setDisplaySize(w, h);
+    });
+  }
+
+  applyReversoTexture(img, color, w, h) {
+    const key = this.reversoTextureKey(color);
+    if (this.textures.exists(key)) {
+      img.setTexture(key).setDisplaySize(w, h);
+      return;
+    }
+    this.requestReversoTexture(color).then((k) => {
+      if (k && img.scene) img.setTexture(k).setDisplaySize(w, h);
+    });
   }
 
   // Fondo estático tipo mesa de fieltro + cabecera (se redibuja al cambiar tamaño).
@@ -352,10 +484,9 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isPortrait) {
       const title = this.add
         .text(this.W / 2, this.yHeader / 2, "🍈 Mamones con Mamones", {
-          fontFamily: "Segoe UI, sans-serif",
-          fontSize: `${this.f(26)}px`,
+          fontFamily: FONT_DISPLAY,
+          fontSize: `${this.f(30)}px`,
           color: "#ffffff",
-          fontStyle: "bold",
         })
         .setOrigin(0.5);
       this.staticLayer.add(title);
@@ -370,6 +501,9 @@ export default class GameScene extends Phaser.Scene {
     // Config de partida elegida en el menú (modo, piensaRapido, jugadores).
     const cfg = this.registry.get("gameConfig") || {};
     this.mode = cfg.mode || "clasica"; // "clasica" | "amarga"
+    // Límites de tiempo por fase (personalizables a futuro desde la config de partida).
+    this.playSecs = cfg.playSecs || 45; // seleccionar carta (jugadores)
+    this.judgeSecs = cfg.judgeSecs || 60; // el Juez elige/descarta
     // Total de jugadores: tú + bots. Mínimo 4, máximo 6 (como el online, acotado
     // por el espacio en pantalla para las jugadas).
     const total = Phaser.Math.Clamp(cfg.players || 4, 4, 6);
@@ -385,9 +519,9 @@ export default class GameScene extends Phaser.Scene {
     this.redSource = [...new Set(rojas)];
 
     // Jugadores: tú + (total-1) bots.
-    this.players = [{ name: "Tú", isBot: false, hand: [], score: 0 }];
+    this.players = [{ name: "Tú", isBot: false, hand: [], score: 0, greens: [] }];
     for (let i = 1; i < total; i++) {
-      this.players.push({ name: `Bot ${i}`, isBot: true, hand: [], score: 0 });
+      this.players.push({ name: `Bot ${i}`, isBot: true, hand: [], score: 0, greens: [] });
     }
 
     // Descarte vacío y mazos frescos al empezar la partida.
@@ -460,6 +594,14 @@ export default class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   startRound() {
+    // Cerrar cualquier modal/arrastre de la ronda anterior.
+    this.closeConfirm();
+    this._cardPress = null;
+    this._cardDrag = null;
+    this.discardedIdx = new Set();
+    this._lastDiscarded = null;
+    this._animateHandEntry = true; // repartir la mano con animación esta ronda
+
     // Recalcular el layout ya con los jugadores creados (afecta el alto del
     // marcador en retrato y, por ende, la posición de la carta verde).
     this.computeLayout();
@@ -509,6 +651,10 @@ export default class GameScene extends Phaser.Scene {
 
     // Si el humano es el Juez, no juega carta: solo espera las jugadas de los bots.
     this.render();
+
+    // Temporizador de selección (solo si el humano debe jugar; el Juez no juega).
+    if (this.judgeIndex !== 0) this.startTimer(this.playSecs, () => this.autoPlayHuman());
+    else this.stopTimer();
   }
 
   // Aplica al bot sus efectos de la Ruleta (los que tienen sentido para una IA)
@@ -588,7 +734,7 @@ export default class GameScene extends Phaser.Scene {
 
     const idx = Phaser.Math.Between(0, bot.hand.length - 1);
     const card = bot.hand.splice(idx, 1)[0];
-    this.dropBotCardToPile(); // boca abajo al montoncito (antes de enviar)
+    this.throwOpponentCard(playerIndex); // boca abajo, lanzada desde su silla
     this.submitCard(playerIndex, card);
   }
 
@@ -608,13 +754,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.fx.jugarACiegas && !this.greenRevealed) this.greenRevealed = true;
 
     // Posición mundial de la carta tocada, para volarla desde ahí al centro.
-    const lx = this.cardW / 2 + handIndex * (this.cardW + this.handGap);
-    const fromX = (this.handContainer ? this.handContainer.x : 0) + lx;
-    const fromY = this.yHand;
+    const orig = this.handContainer && this.handContainer.list[handIndex];
+    const fromX = orig ? this.handContainer.x + orig.x : this.W / 2;
+    const fromY = orig ? this.handContainer.y + orig.y : this.yHand;
 
     // Ocultar la carta original y sacarla de la mano (datos) de una vez, para que
     // un re-render durante el vuelo no la muestre de nuevo.
-    const orig = this.handContainer && this.handContainer.list[handIndex];
     if (orig) orig.setVisible(false);
     const card = this.players[0].hand.splice(handIndex, 1)[0];
 
@@ -674,17 +819,50 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  // Coloca una carta boca abajo (jugada de un bot) en el montoncito.
-  dropBotCardToPile() {
+  // Ángulo de la "silla" del rival k (de m rivales), repartidos parejo por el
+  // semicírculo superior: 0°=derecha … 180°=izquierda. m=1 → 90° (arriba).
+  seatAngle(k, m) {
+    if (m <= 1) return 90;
+    return (180 * k) / (m - 1);
+  }
+
+  // Carta boca abajo de un rival: LLEGA LANZADA desde su silla hacia el montoncito.
+  throwOpponentCard(playerIndex) {
+    const m = this.players.length - 1; // nº de rivales
+    const k = Math.max(0, playerIndex - 1); // índice del rival (tú = 0)
+    const deg = this.seatAngle(k, m);
+    const th = Phaser.Math.DegToRad(deg);
+
+    const cx = this.W / 2;
+    const cyC = this.yCenter;
+    // Punto de partida fuera, en la dirección de la silla (elipse alrededor del centro).
+    const Rx = this.W * 0.6;
+    const Ry = this.H * 0.42;
+    const fromX = cx + Rx * Math.cos(th);
+    const fromY = cyC - Ry * Math.sin(th);
+
     const slot = this._pileCount++;
-    const { ox, oy, rot } = this.pileSlot(slot);
-    const back = this.makeCardBack(this.cardW, this.cardH);
-    back.setPosition(this.W / 2 + ox, this.yCenter + oy);
-    back.setAngle(rot);
-    back.setScale(0.55);
+    const { ox, oy } = this.pileSlot(slot);
+    const toX = cx + ox;
+    const toY = cyC + oy;
+    // Rotación de aterrizaje: insinúa la dirección del lanzamiento + leve azar.
+    const landAngle = (deg - 90) * 0.5 + Phaser.Math.Between(-6, 6);
+
+    const back = this.makeCardBack(this.cardW, this.cardH, "roja");
+    back.setPosition(fromX, fromY);
+    back.setScale(0.5);
+    back.setAngle((deg - 90) * 0.5);
     this.animLayer.add(back);
     this._pile.push(back);
-    this.tweens.add({ targets: back, scale: 0.7, duration: 200, ease: "Back.easeOut" });
+    this.tweens.add({
+      targets: back,
+      x: toX,
+      y: toY,
+      angle: landAngle,
+      scale: 0.7,
+      duration: 340,
+      ease: "Back.easeOut",
+    });
   }
 
   // Limpia el montoncito del centro (al empezar la ronda o al pasar a juzgar).
@@ -697,6 +875,9 @@ export default class GameScene extends Phaser.Scene {
 
   submitCard(playerIndex, card) {
     this.submissions.push({ playerIndex, card, at: this.time.now });
+
+    // El humano ya cumplió su cupo → cortar su temporizador de selección.
+    if (playerIndex === 0 && this.humanSubmittedCount() >= this.humanPlaysNeeded) this.stopTimer();
 
     // ¿Ya jugaron todos? (con Jugada Doble alguien debe 2 cartas)
     const expected = this.playsNeeded.reduce((a, b) => a + b, 0);
@@ -744,9 +925,23 @@ export default class GameScene extends Phaser.Scene {
     // En Amarga el Juez elige primero la MEJOR y luego la PEOR.
     this.judgingStep = this.mode === "amarga" ? "best" : null;
     this.bestPick = null;
+    // Clásica: mecánica de descarte (el juez elimina perdedoras hasta la ganadora).
+    this.discardedIdx = new Set();
+    this._lastDiscarded = null;
+    this._cardPress = null;
+    this._cardDrag = null;
 
-    if (this.players[this.judgeIndex].isBot) this.scheduleBotBest();
+    const botJudge = this.players[this.judgeIndex].isBot;
+    if (this.mode === "amarga") {
+      if (botJudge) this.scheduleBotBest();
+    } else if (botJudge) {
+      this.scheduleBotDiscard(); // auto-descarte animado
+    }
     this.render();
+
+    // Temporizador del Juez solo si juzga el humano (los bots resuelven solos).
+    if (!botJudge) this.startTimer(this.judgeSecs, () => this.resolveJudgeTimeout());
+    else this.stopTimer();
   }
 
   scheduleBotBest() {
@@ -754,6 +949,60 @@ export default class GameScene extends Phaser.Scene {
       if (this.phase !== "judging") return;
       this.judgePick(Phaser.Math.Between(0, this.submissions.length - 1));
     });
+  }
+
+  // Índices de submissions aún NO descartados.
+  remainingSubmissions() {
+    return this.submissions.map((_, i) => i).filter((i) => !this.discardedIdx.has(i));
+  }
+
+  // Descartar una jugada como perdedora (Clásica). Si queda una, gana sola.
+  discardSubmission(i) {
+    if (this.phase !== "judging" || this.mode === "amarga") return;
+    if (this.discardedIdx.has(i)) return;
+    this.discardedIdx.add(i);
+    this._lastDiscarded = i; // para animar su caída al 🗑️ en el render
+    const rem = this.remainingSubmissions();
+    if (rem.length <= 1) {
+      const win = rem[0];
+      this.render();
+      this.time.delayedCall(300, () => {
+        if (this.phase !== "judging") return;
+        this.awardBest(win);
+        this.finishJudging();
+      });
+    } else {
+      this.render();
+    }
+  }
+
+  // Elegir ganadora directa: el resto salta al 🗑️ en cascada y esa gana.
+  chooseWinner(i) {
+    if (this.phase !== "judging" || this.mode === "amarga") return;
+    this.submissions.forEach((_, k) => { if (k !== i) this.discardedIdx.add(k); });
+    this._lastDiscarded = null; // cascada: se animan todas las nuevas del 🗑️
+    this.render();
+    this.time.delayedCall(460, () => {
+      if (this.phase !== "judging") return;
+      this.awardBest(i);
+      this.finishJudging();
+    });
+  }
+
+  // Juez BOT (Clásica): descarta perdedoras 1 a 1; la última deja una → gana sola.
+  scheduleBotDiscard() {
+    const idxs = this.submissions.map((_, i) => i);
+    const winner = Phaser.Math.Between(0, idxs.length - 1);
+    const losers = idxs.filter((k) => k !== winner);
+    Phaser.Utils.Array.Shuffle(losers);
+    let t = 800;
+    for (const k of losers) {
+      this.time.delayedCall(t, () => {
+        if (this.phase !== "judging") return;
+        this.discardSubmission(k);
+      });
+      t += 700;
+    }
   }
 
   // Punto de entrada del Juez (humano o bot) al elegir una jugada.
@@ -789,6 +1038,7 @@ export default class GameScene extends Phaser.Scene {
   awardBest(submissionIndex) {
     const best = this.submissions[submissionIndex];
     this.players[best.playerIndex].score += 1;
+    this.players[best.playerIndex].greens.push(this.currentGreen); // verde ganada (apartado/meta)
     this.lastResult = { winnerIndex: best.playerIndex, card: best.card };
     // Registrar la ronda para el recap (verde jugada → roja ganadora → quién).
     this.history.push({
@@ -815,6 +1065,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   finishJudging() {
+    this.stopTimer(); // el Juez ya resolvió
     const winner = this.players[this.lastResult.winnerIndex];
     this.phase = winner.score >= metaGanar(this.players.length) ? "gameover" : "result";
     this.render();
@@ -827,6 +1078,111 @@ export default class GameScene extends Phaser.Scene {
           .sort((a, b) => b.rondas - a.rondas),
         rondas: this.history,
       });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Temporizador de ronda (45s jugar · 60s juzgar; personalizable a futuro)
+  // ---------------------------------------------------------------------------
+  startTimer(seconds, onExpire) {
+    this.stopTimer();
+    this.timerDeadline = this.time.now + seconds * 1000;
+    this._onTimerExpire = onExpire;
+    this.renderTimer(seconds);
+    this.timerEvent = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        const remMs = this.timerDeadline - this.time.now;
+        this.renderTimer(Math.max(0, Math.ceil(remMs / 1000)));
+        if (remMs <= 0) {
+          const cb = this._onTimerExpire;
+          this.stopTimer();
+          if (cb) cb();
+        }
+      },
+    });
+  }
+
+  stopTimer() {
+    if (this.timerEvent) {
+      this.timerEvent.remove();
+      this.timerEvent = null;
+    }
+    this._onTimerExpire = null;
+    if (this.hud) this.hud.removeAll(true);
+  }
+
+  // Píldora de cuenta regresiva arriba a la derecha (en rojo cuando queda poco).
+  renderTimer(secs) {
+    if (!this.hud) return;
+    this.hud.removeAll(true);
+    const urgent = secs <= 10;
+    const color = urgent ? "#ff5a4d" : COLORS.goldHex;
+    const txt = this.add
+      .text(0, 0, `⏱ ${secs}`, {
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(22)}px`,
+        color,
+        letterSpacing: 0.5,
+      })
+      .setOrigin(1, 0.5);
+    const padX = this.f(12);
+    const padY = this.f(6);
+    const w = txt.width + padX * 2;
+    const h = txt.height + padY * 2;
+    const rx = this.W - this.f(14); // ancla derecha
+    const cyp = this.yHeader / 2;
+    const g = this.add.graphics();
+    g.fillStyle(COLORS.panel, 0.9);
+    g.fillRoundedRect(rx - w, cyp - h / 2, w, h, h / 2);
+    g.lineStyle(2, urgent ? 0xff5a4d : COLORS.panelBorder, 0.9);
+    g.strokeRoundedRect(rx - w, cyp - h / 2, w, h, h / 2);
+    txt.setPosition(rx - padX, cyp);
+    this.hud.add(g);
+    this.hud.add(txt);
+  }
+
+  // Se agotó el tiempo de jugar: juega carta(s) al azar por el humano (elección del usuario).
+  autoPlayHuman() {
+    if (this.phase !== "play") return;
+    this.closeConfirm();
+    const playOne = () => {
+      if (this.phase !== "play") return;
+      if (this.humanSubmittedCount() >= this.humanPlaysNeeded) return;
+      const hand = this.players[0].hand;
+      if (!hand.length) return;
+      this.humanPlayCard(Phaser.Math.Between(0, hand.length - 1));
+      // Jugada Doble: encadenar la siguiente tras la animación (submitCard ~480ms).
+      if (this.humanSubmittedCount() + 1 < this.humanPlaysNeeded) {
+        this.time.delayedCall(650, playOne);
+      }
+    };
+    playOne();
+  }
+
+  // Se agotó el tiempo del Juez (humano): elige ganadora al azar (elección del usuario).
+  resolveJudgeTimeout() {
+    if (this.phase !== "judging" || this.judgeIndex !== 0) return;
+    this.closeConfirm();
+    const rem = this.remainingSubmissions();
+    if (!rem.length) return;
+    const pick = rem[Phaser.Math.Between(0, rem.length - 1)];
+    if (this.mode !== "amarga") {
+      this.chooseWinner(pick);
+      return;
+    }
+    // Amarga: mejor al azar y luego peor al azar.
+    if (this.judgingStep === "best") {
+      this.judgePick(pick);
+      this.time.delayedCall(1000, () => {
+        if (this.phase !== "judging" || this.judgingStep !== "worst") return;
+        const w = this.worstSelectableIndices();
+        if (w.length) this.judgeWorst(w[Phaser.Math.Between(0, w.length - 1)]);
+      });
+    } else if (this.judgingStep === "worst") {
+      const w = this.worstSelectableIndices();
+      if (w.length) this.judgeWorst(w[Phaser.Math.Between(0, w.length - 1)]);
     }
   }
 
@@ -874,6 +1230,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   restartGame() {
+    this.stopTimer();
     this.setupGame();
     this.startRound();
   }
@@ -908,18 +1265,15 @@ export default class GameScene extends Phaser.Scene {
     if (this.phase === "play") {
       this.drawPlayerHand();
     } else if (this.phase === "judging") {
-      this.drawCenterCaption("Jugadas");
-      this.drawSubmissions(false);
+      this.drawSubmissions(false, "Jugadas");
     } else if (this.phase === "result") {
-      this.drawCenterCaption("Resultado de la ronda");
-      this.drawSubmissions(true);
+      this.drawSubmissions(true, "Resultado de la ronda");
       this.drawNextButton("Siguiente ronda", () => this.nextRound());
     } else if (this.phase === "gameover") {
       // El recap (campeón, podio y repaso) y el botón "Jugar de nuevo" los
       // dibuja React encima del canvas (ver PhaserGame). Aquí solo dejamos las
       // jugadas de la última ronda como fondo.
-      this.drawCenterCaption("¡Fin de la partida!");
-      this.drawSubmissions(true);
+      this.drawSubmissions(true, "¡Fin de la partida!");
     }
 
     // La ruleta vive en su propio overlay animado (this.rouletteLayer), por
@@ -929,22 +1283,59 @@ export default class GameScene extends Phaser.Scene {
   drawRoundLabel() {
     const t = this.add
       .text(this.f(20), this.yHeader / 2, `Ronda ${this.round} · Meta ${metaGanar(this.players.length)}`, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${this.f(17)}px`,
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(20)}px`,
         color: COLORS.goldHex,
-        fontStyle: "bold",
       })
       .setOrigin(0, 0.5);
     this.ui.add(t);
   }
 
+  // ---------- Verdes ganadas: mini-carta + pila superpuesta (solo títulos) ----------
+  // Mini carta VERDE (misma textura por capas que la grande, cacheada por texto).
+  // `h` = alto en px; devuelve un contenedor h·ratio de ancho, con filo dorado.
+  makeGreenMini(text, h) {
+    const w = h / CARD_RATIO;
+    const c = this.add.container(0, 0);
+    const img = this.add
+      .image(0, 0, this.ensurePlaceholderTexture("verde"))
+      .setOrigin(0.5)
+      .setDisplaySize(w, h);
+    c.add(img);
+    this.applyCardTexture(img, "verde", text, w, h);
+    c.add(this.cardKeyline(w, h));
+    c.cardW = w;
+    c.cardH = h;
+    return c;
+  }
+
+  // Pila de verdes superpuestas hacia la derecha: cada carta tapa a la anterior
+  // dejando ver su borde IZQUIERDO (donde va el título). La última se ve entera.
+  // Añade los contenedores a `parent`; devuelve el ancho total ocupado.
+  // `revealFactor` = fracción del ancho visible por carta tapada (0.26 ≈ franja del título).
+  drawGreenStack(parent, xLeft, cy, greens, miniH, revealFactor = 0.26) {
+    const w = miniH / CARD_RATIO;
+    const n = greens.length;
+    if (!n) return 0;
+    const stride = w * revealFactor;
+    const totalW = w + (n - 1) * stride;
+    greens.forEach((text, i) => {
+      const mini = this.makeGreenMini(text, miniH);
+      mini.setPosition(xLeft + w / 2 + i * stride, cy);
+      parent.add(mini);
+    });
+    return totalW;
+  }
+
   drawScoreboard() {
     if (this.isPortrait) return this.drawScoreStrip();
 
+    const meta = metaGanar(this.players.length);
     const w = Math.min(this.f(230), this.W * 0.36);
-    const rowH = this.f(32);
-    const padTop = this.f(38);
-    const h = padTop + this.players.length * rowH + this.f(12);
+    const miniH = this.f(26); // alto de las mini-verdes en la pila
+    const rowH = this.f(28) + miniH + this.f(6);
+    const padTop = this.f(40);
+    const h = padTop + this.players.length * rowH + this.f(10);
     const x = this.W - w - this.f(16);
     const y = this.yHeader + 12;
 
@@ -955,22 +1346,23 @@ export default class GameScene extends Phaser.Scene {
     g.strokeRoundedRect(x, y, w, h, 12);
     this.ui.add(g);
 
-    const title = this.add.text(x + this.f(14), y + this.f(11), "PUNTOS", {
-      fontFamily: "Segoe UI, sans-serif",
-      fontSize: `${this.f(12)}px`,
+    const title = this.add.text(x + this.f(14), y + this.f(13), `VERDES · META ${meta}`, {
+      fontFamily: FONT_DISPLAY,
+      fontSize: `${this.f(14)}px`,
       color: COLORS.textMuted,
-      fontStyle: "bold",
-    });
+      letterSpacing: 1,
+    }).setOrigin(0, 0.5);
     this.ui.add(title);
 
     this.players.forEach((p, i) => {
       const isJudge = i === this.judgeIndex;
-      const ry = y + padTop + i * rowH + rowH / 2;
+      const rowTop = y + padTop + i * rowH;
+      const nameY = rowTop + this.f(12);
 
       const name = this.add
-        .text(x + this.f(14), ry, p.name, {
-          fontFamily: "Segoe UI, sans-serif",
-          fontSize: `${this.f(16)}px`,
+        .text(x + this.f(14), nameY, p.name, {
+          fontFamily: FONT_UI,
+          fontSize: `${this.f(15)}px`,
           color: isJudge ? COLORS.goldHex : COLORS.textLight,
           fontStyle: isJudge ? "bold" : "normal",
         })
@@ -979,28 +1371,134 @@ export default class GameScene extends Phaser.Scene {
 
       if (isJudge) {
         const badge = this.add
-          .text(x + this.f(14) + name.width + 8, ry, "JUEZ", {
-            fontFamily: "Segoe UI, sans-serif",
-            fontSize: `${this.f(10)}px`,
+          .text(x + this.f(14) + name.width + 8, nameY, "JUEZ", {
+            fontFamily: FONT_DISPLAY,
+            fontSize: `${this.f(12)}px`,
             color: COLORS.dark,
-            fontStyle: "bold",
             backgroundColor: COLORS.goldHex,
-            padding: { x: 5, y: 2 },
+            padding: { x: 5, y: 1 },
           })
           .setOrigin(0, 0.5);
         this.ui.add(badge);
       }
 
-      const score = this.add
-        .text(x + w - this.f(14), ry, String(p.score), {
-          fontFamily: "Segoe UI, sans-serif",
-          fontSize: `${this.f(19)}px`,
-          color: COLORS.textLight,
+      const cnt = this.add
+        .text(x + w - this.f(12), nameY, `${p.score}/${meta}`, {
+          fontFamily: FONT_UI,
+          fontSize: `${this.f(15)}px`,
+          color: p.score >= meta ? COLORS.goldHex : COLORS.textLight,
           fontStyle: "bold",
         })
         .setOrigin(1, 0.5);
-      this.ui.add(score);
+      this.ui.add(cnt);
+
+      // Pila de verdes superpuestas (solo se ven los títulos); guion tenue si no hay.
+      const stackY = rowTop + this.f(24) + miniH / 2;
+      if (p.greens.length) {
+        this.drawGreenStack(this.ui, x + this.f(14), stackY, p.greens, miniH);
+      } else {
+        const dash = this.add
+          .text(x + this.f(14), stackY, "—", {
+            fontFamily: FONT_UI,
+            fontSize: `${this.f(13)}px`,
+            color: COLORS.textMuted,
+          })
+          .setOrigin(0, 0.5);
+        this.ui.add(dash);
+      }
     });
+
+    // Toda la tarjeta abre el overlay con las verdes en grande (encima de todo lo demás).
+    const hit = this.add.graphics();
+    hit.setInteractive(new Phaser.Geom.Rectangle(x, y, w, h), Phaser.Geom.Rectangle.Contains);
+    hit.on("pointerup", () => this.openGreensOverlay());
+    this.ui.add(hit);
+  }
+
+  // Overlay a pantalla completa: las verdes ganadas de CADA jugador, superpuestas y
+  // legibles (títulos a la vista). Se cierra tocando fuera o "Cerrar".
+  openGreensOverlay() {
+    if (this.confirmLayer) return;
+    const meta = metaGanar(this.players.length);
+    const layer = this.add.container(0, 0);
+    this.confirmLayer = layer;
+
+    const dim = this.add.graphics();
+    dim.fillStyle(0x000000, 0.82);
+    dim.fillRect(0, 0, this.W, this.H);
+    dim.setInteractive(new Phaser.Geom.Rectangle(0, 0, this.W, this.H), Phaser.Geom.Rectangle.Contains);
+    dim.on("pointerup", () => this.closeConfirm());
+    layer.add(dim);
+
+    const title = this.add
+      .text(this.W / 2, this.f(26), `Cartas verdes ganadas · Meta ${meta}`, {
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(22)}px`,
+        color: COLORS.goldHex,
+        align: "center",
+        letterSpacing: 0.5,
+      })
+      .setOrigin(0.5);
+    layer.add(title);
+
+    const top = this.f(54);
+    const bottom = this.H - this.f(58);
+    const n = this.players.length;
+    const rowH = (bottom - top) / n;
+    const nameColW = Math.min(this.f(140), this.W * 0.28);
+    const stackLeft = this.f(18) + nameColW;
+    const availW = this.W - stackLeft - this.f(18);
+    const maxG = Math.max(1, ...this.players.map((p) => p.greens.length));
+    const wByWidth = availW / (1 + (maxG - 1) * 0.3);
+    const miniH = Math.min(this.f(98), rowH * 0.74, wByWidth * CARD_RATIO);
+
+    this.players.forEach((p, i) => {
+      const isJudge = i === this.judgeIndex;
+      const cy = top + i * rowH + rowH / 2;
+
+      const name = this.add
+        .text(this.f(18), cy - this.f(9), p.name, {
+          fontFamily: FONT_UI,
+          fontSize: `${this.f(17)}px`,
+          color: isJudge ? COLORS.goldHex : COLORS.textLight,
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0.5);
+      layer.add(name);
+
+      const cnt = this.add
+        .text(this.f(18), cy + this.f(13), `${p.score}/${meta}`, {
+          fontFamily: FONT_UI,
+          fontSize: `${this.f(13)}px`,
+          color: p.score >= meta ? COLORS.goldHex : COLORS.textMuted,
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0.5);
+      layer.add(cnt);
+
+      if (p.greens.length) {
+        this.drawGreenStack(layer, stackLeft, cy, p.greens, miniH, 0.3);
+      } else {
+        const none = this.add
+          .text(stackLeft, cy, "Sin verdes aún", {
+            fontFamily: FONT_UI,
+            fontSize: `${this.f(13)}px`,
+            color: COLORS.textMuted,
+            fontStyle: "italic",
+          })
+          .setOrigin(0, 0.5);
+        layer.add(none);
+      }
+
+      if (i < n - 1) {
+        const sep = this.add.graphics();
+        sep.lineStyle(1, COLORS.panelBorder, 0.35);
+        sep.lineBetween(this.f(16), top + (i + 1) * rowH, this.W - this.f(16), top + (i + 1) * rowH);
+        layer.add(sep);
+      }
+    });
+
+    this.drawMiniButton(this.W / 2, this.H - this.f(28), this.f(160), this.f(40), "Cerrar", () => this.closeConfirm(), true, layer);
   }
 
   // Marcador compacto para retrato: chips "nombre pts" centradas, con salto de
@@ -1012,13 +1510,14 @@ export default class GameScene extends Phaser.Scene {
     const chipH = this.f(26);
     const padX = this.f(9);
     const yTop = this.yHeader + this.f(5);
+    const meta = metaGanar(this.players.length);
 
     // Construir chips (texto) y medir su ancho.
     const chips = this.players.map((p, i) => {
       const isJudge = i === this.judgeIndex;
       const label = this.add
-        .text(0, 0, `${isJudge ? "⚖️ " : ""}${p.name} ${p.score}`, {
-          fontFamily: "Segoe UI, sans-serif",
+        .text(0, 0, `${isJudge ? "⚖️ " : ""}${p.name} ${p.score}/${meta}`, {
+          fontFamily: FONT_UI,
           fontSize: `${this.f(13)}px`,
           color: isJudge ? COLORS.dark : COLORS.textLight,
           fontStyle: "bold",
@@ -1059,6 +1558,13 @@ export default class GameScene extends Phaser.Scene {
         x += c.w + gap;
       }
     });
+
+    // La tira completa abre el overlay con las verdes ganadas (superpuestas, legibles).
+    const stripH = rows.length * (chipH + gap);
+    const hit = this.add.graphics();
+    hit.setInteractive(new Phaser.Geom.Rectangle(0, yTop, this.W, stripH), Phaser.Geom.Rectangle.Contains);
+    hit.on("pointerup", () => this.openGreensOverlay());
+    this.ui.add(hit);
   }
 
   drawGreenCard() {
@@ -1066,10 +1572,7 @@ export default class GameScene extends Phaser.Scene {
     const h = this.greenH;
     const container = this.add.container(this.W / 2, this.yGreen);
 
-    const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.25);
-    shadow.fillEllipse(0, h / 2 - 4, w * 0.85, h * 0.1);
-    container.add(shadow);
+    container.add(this.cardShadow(w, h));
 
     // ⏳ A ciegas: el adjetivo verde está oculto hasta que el humano juega.
     if (!this.greenRevealed) {
@@ -1081,7 +1584,7 @@ export default class GameScene extends Phaser.Scene {
       container.add(g);
       const q = this.add
         .text(0, 0, "🟢\n?", {
-          fontFamily: "Segoe UI, sans-serif",
+          fontFamily: FONT_UI,
           fontSize: `${Math.round(this.greenFont * 1.5)}px`,
           color: COLORS.textMuted,
           align: "center",
@@ -1094,13 +1597,13 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const img = this.add
-      .image(0, 0, this.greenTex)
+      .image(0, 0, this.ensurePlaceholderTexture("verde"))
       .setOrigin(0.5)
       .setDisplaySize(w, h);
     container.add(img);
-
-    // Cabecera: mismo tratamiento que las amarillas (adjetivo arriba, sin invadir la ilustración).
-    this.drawCardHeader(container, this.currentGreen, this.greenFont, TITLE_GREEN, w, h);
+    // Cara VERDE por capas (píldora + título rotado + flavor); reemplaza el placeholder.
+    this.applyCardTexture(img, "verde", this.currentGreen, w, h);
+    container.add(this.cardKeyline(w, h)); // filo dorado: separa del fieltro
 
     this.ui.add(container);
   }
@@ -1133,10 +1636,10 @@ export default class GameScene extends Phaser.Scene {
               ? "Eres el Juez: elige la MEJOR carta."
               : "Ahora elige la PEOR carta (el Mamón Amargo).";
         } else {
-          msg = "Eres el Juez: elige la carta ganadora.";
+          msg = "Eres el Juez: descarta las perdedoras (arrástralas a la papelera) o toca una para elegir ganadora.";
         }
       } else {
-        msg = `${this.players[this.judgeIndex].name} (Juez) está decidiendo...`;
+        msg = `${this.players[this.judgeIndex].name} (Juez) está descartando...`;
       }
     } else if (this.phase === "result") {
       const w = this.players[this.lastResult.winnerIndex];
@@ -1157,7 +1660,7 @@ export default class GameScene extends Phaser.Scene {
           : `🐢 ${v.name} se tardó: su carta se quedó en la mano.`;
       const note = this.add
         .text(this.W / 2, this.yStatus + this.f(26), txt, {
-          fontFamily: "Segoe UI, sans-serif",
+          fontFamily: FONT_UI,
           fontSize: `${this.f(13)}px`,
           color: COLORS.textMuted,
           align: "center",
@@ -1172,7 +1675,7 @@ export default class GameScene extends Phaser.Scene {
   drawPill(cx, cy, message) {
     const label = this.add
       .text(cx, cy, message, {
-        fontFamily: "Segoe UI, sans-serif",
+        fontFamily: FONT_UI,
         fontSize: `${this.f(17)}px`,
         color: COLORS.textLight,
         align: "center",
@@ -1195,21 +1698,9 @@ export default class GameScene extends Phaser.Scene {
     this.ui.add(label); // el texto queda por encima del fondo
   }
 
-  drawCenterCaption(text) {
-    const t = this.add
-      .text(this.W / 2, this.yCenter - this.cardH / 2 - this.f(16), text, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${this.f(14)}px`,
-        color: COLORS.textMuted,
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5);
-    this.ui.add(t);
-  }
-
-  // Mano del jugador humano (abajo), en una tira con SCROLL HORIZONTAL.
-  // Las cartas viven en un contenedor enmascarado a un "viewport"; se arrastra
-  // o se usa la rueda para desplazarlas. Clickable solo si puede jugar.
+  // Mano del jugador humano (abajo), en dos vistas: ABANICO (baraja en arco) o
+  // COMPLETAS (1 fila si cabe / 2 filas en angosto). El contenedor va centrado en
+  // (W/2, yHand) y cada carta se posiciona en coords locales. Sin scroll (ambas caben).
   drawPlayerHand() {
     const hand = this.players[0].hand;
     const canPlay =
@@ -1218,38 +1709,63 @@ export default class GameScene extends Phaser.Scene {
       this.humanSubmittedCount() < this.humanPlaysNeeded;
     const faceDown = this.fx.pelaElOjo;
 
+    const n = hand.length;
     const w = this.cardW;
+    const h = this.cardH;
     const gap = this.handGap;
-    const totalW = hand.length * w + (hand.length - 1) * gap;
     const cy = this.yHand;
-
-    // Viewport visible de la mano.
     const margin = Math.max(this.f(16), this.W * 0.03);
-    const viewportX = margin;
     const viewportW = this.W - 2 * margin;
 
-    // Banda (alto) un poco mayor que la carta para que el hover no se recorte.
-    const bandH = this.cardH * 1.16;
-    const bandTop = cy - bandH / 2;
-    this.handBand = { top: bandTop, bottom: bandTop + bandH };
+    // Posiciones locales {x,y,angle} + escala + extensión vertical. Única vista: abanico.
+    const layout = this.fanLayout(n, w, h, viewportW);
 
-    // Contenedor desplazable: las cartas se posicionan en coords locales (y=0).
-    const container = this.add.container(0, cy);
+    // Banda (para inHandBand/gestos) cubriendo el alto real del layout.
+    const bandTop = cy + layout.top - this.f(6);
+    const bandBottom = cy + layout.bottom + this.f(6);
+    this.handBand = { top: bandTop, bottom: bandBottom };
+
+    const animate = this._animateHandEntry;
+
+    // Pre-rasterizar la mano ANTES de la barrida: si vamos a animar y falta alguna
+    // textura, precárgalas todas y difiere el dibujo; al terminar re-renderiza (ya
+    // cacheadas) y la barrida sale fluida en vez de ir rasterizando bajo demanda.
+    if (animate) {
+      if (this._handPrewarming) return; // en pleno precalentado: no dibujes la mano aún
+      const sig = hand.join("|");
+      const allCached = hand.every((t) => this.textures.exists(this.cardTextureKey("roja", t)));
+      if (!allCached && this._handWarmSig !== sig) {
+        this._handWarmSig = sig; // marca este reparto (evita reintentos en bucle si algo falla)
+        this._handPrewarming = true;
+        Promise.all(hand.map((t) => this.requestCardTexture("roja", t))).finally(() => {
+          this._handPrewarming = false;
+          if (this.scene && this.scene.isActive() && this.phase === "play") this.render();
+        });
+        return;
+      }
+    }
+    this._animateHandEntry = false;
+
+    const container = this.add.container(this.W / 2, cy);
     hand.forEach((text, i) => {
-      const lx = w / 2 + i * (w + gap);
+      const P = layout.pos[i];
       const card = this.makeRedCard(text);
-      card.setPosition(lx, 0);
-      card.setAlpha(canPlay ? 1 : 0.65);
+      card.setPosition(P.x, P.y);
+      card.setAngle(P.angle);
+      if (layout.scale !== 1) card.setScale(layout.scale);
+      card.baseScale = layout.scale;
+      const finalAlpha = canPlay ? 1 : 0.65;
+      card.setAlpha(finalAlpha);
+      if (animate) this._animateCardIn(card, i, n, P, layout.scale, finalAlpha);
 
       // 👀 "Pela el ojo": un reverso cubre la carta y se levanta al espiar.
       let back = null;
       if (faceDown) {
-        back = this.makeCardBack(w, this.cardH);
+        back = this.makeCardBack(w, h, "roja");
         card.add(back);
       }
 
       if (canPlay) {
-        // La imagen es interactiva: su zona de clic es exactamente toda la carta.
         const img = card.cardImage;
         img.setInteractive({ useHandCursor: true });
 
@@ -1271,13 +1787,22 @@ export default class GameScene extends Phaser.Scene {
           img.on("pointerout", () => back && back.setVisible(true));
         } else {
           img.on("pointerover", () => {
-            card.setScale(1.06);
-            container.bringToTop(card);
+            if (this._cardDrag || this.confirmLayer) return;
+            card.setScale((card.baseScale || 1) * 1.06);
+            container.bringToTop(card); // al frente para verla completa sobre las vecinas
           });
-          img.on("pointerout", () => card.setScale(1));
-          // Jugar al soltar, solo si fue un toque (no un arrastre para scroll).
-          img.on("pointerup", () => {
-            if (!this._handDragged) this.humanPlayCard(i);
+          img.on("pointerout", () => {
+            if (this._cardDrag) return;
+            card.setScale(card.baseScale || 1);
+            // Restaurar el ORDEN original (índice i) para no dejar el solape encimado.
+            if (card.parentContainer === container) container.moveTo(card, i);
+          });
+          // Press pendiente; la resolución (tap→modal, arrastre-arriba→jugar) ocurre
+          // en los handlers de escena (pointermove/up).
+          img.on("pointerdown", (p) => {
+            if (this.confirmLayer || this._animatingPlay || this._cardDrag) return;
+            this._cardPress = { i, text, x: p.x, y: p.y };
+            this._handDragged = false;
           });
         }
       }
@@ -1285,39 +1810,48 @@ export default class GameScene extends Phaser.Scene {
     });
     this.ui.add(container);
     this.handContainer = container;
+    this.handScroll = null; // sin scroll horizontal
+  }
 
-    // Límites de scroll. Si todo cabe, se centra y no hay desplazamiento.
-    let min, max, enabled;
-    if (totalW <= viewportW) {
-      const x = viewportX + (viewportW - totalW) / 2;
-      min = max = x;
-      enabled = false;
-    } else {
-      max = viewportX; // mostrando el inicio
-      min = viewportX + viewportW - totalW; // mostrando el final
-      enabled = true;
+  // Layout ABANICO: solape IZQUIERDA→DERECHA. Cada carta deja ver su franja izquierda
+  // (donde va el título) y la última (derecha) va encima, completa = la más cercana al
+  // jugador. Compacto (entra mejor en pantalla) y con todos los títulos legibles en orden.
+  fanLayout(n, w, h, viewportW) {
+    const reveal = 0.34; // fracción del ancho visible de cada carta tapada (la franja del título)
+    // Escala para que TODO el abanico quepa en el ancho disponible (nunca se sale).
+    const baseTotal = w + (n - 1) * (w * reveal);
+    const scale = viewportW && baseTotal > viewportW ? viewportW / baseTotal : 1;
+    const ws = w * scale, hs = h * scale;
+    const stride = ws * reveal;
+    const totalW = ws + (n - 1) * stride;
+    const startX = -totalW / 2 + ws / 2;
+    const pos = [];
+    let maxY = 0;
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) - 0.5 : 0; // -0.5 (izq) .. 0.5 (der)
+      const angle = t * 24; // abanico bien curvo (±12°): las cartas rotan siguiendo el arco
+      const y = t * t * hs * 0.8; // arco: centro arriba, extremos ~0.2·h más abajo
+      pos.push({ x: startX + i * stride, y, angle });
+      if (y > maxY) maxY = y;
     }
-    container.x = max;
-    this.handScroll = { min, max, enabled };
+    this._handStartX = startX; // arranque de la animación de entrada (barrido desde la izq)
+    const pad = hs * 0.1; // margen por la rotación (±12°)
+    return { pos, scale, top: -hs / 2 - pad, bottom: maxY + hs / 2 + pad };
+  }
 
-    // Máscara del viewport (no se añade a this.ui; se destruye manualmente).
-    const shape = this.make.graphics();
-    shape.fillStyle(0xffffff);
-    shape.fillRect(viewportX, bandTop, viewportW, bandH);
-    container.setMask(shape.createGeometryMask());
-    this.handMaskShape = shape;
-
-    if (enabled) {
-      this.drawScrollbar(viewportX, viewportW, cy + this.cardH / 2 + this.f(6), totalW);
-      const hint = this.add
-        .text(this.W / 2, bandTop - this.f(8), "‹ desliza para ver tus cartas ›", {
-          fontFamily: "Segoe UI, sans-serif",
-          fontSize: `${this.f(12)}px`,
-          color: COLORS.textMuted,
-        })
-        .setOrigin(0.5);
-      this.ui.add(hint);
-    }
+  // Animación de entrada del abanico: "abre desde la izquierda" — todas parten
+  // apiladas en la posición de la carta más a la izquierda (baraja cerrada) y barren
+  // a su sitio hacia la derecha, escalonadas (la derecha lidera).
+  _animateCardIn(card, i, n, P, finalScale, finalAlpha) {
+    card.setPosition(this._handStartX ?? P.x, 0);
+    card.setAngle(0);
+    card.setScale(finalScale);
+    card.setAlpha(0);
+    this.tweens.add({
+      targets: card,
+      x: P.x, y: P.y, angle: P.angle, alpha: finalAlpha,
+      delay: (n - 1 - i) * 55, duration: 430, ease: "Cubic.easeOut",
+    });
   }
 
   // Barra de desplazamiento bajo la mano (indica posición; se actualiza al hacer scroll).
@@ -1350,43 +1884,95 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Cartas jugadas en el centro. revealOwners=true muestra de quién es cada una.
-  drawSubmissions(revealOwners) {
-    const n = this.submissions.length;
-    let gap = Math.max(this.handGap, this.f(28));
-    // Escalar hacia abajo si las jugadas no caben a lo ancho (muchos jugadores).
+  // Clásica en fase juzgar: solo las NO descartadas (re-centradas) + zona 🗑️.
+  drawSubmissions(revealOwners, caption) {
+    const classicJudging = this.phase === "judging" && this.mode !== "amarga";
+    const humanIsJudge = this.judgeIndex === 0;
+
+    // Índices visibles en la fila (en juzgar-clásica se ocultan los descartados).
+    const visible = this.submissions
+      .map((sub, i) => ({ sub, i }))
+      .filter((o) => !(classicJudging && this.discardedIdx.has(o.i)));
+
+    const n = visible.length;
+    // Estas fases NO muestran la mano: las jugadas ocupan la banda libre BAJO el banner
+    // (hasta el botón en resultado, o el borde inferior). Se escala para caber a lo
+    // ancho Y a lo alto, y el rótulo va justo encima (sin chocar con el banner).
     const maxRowW = this.W * 0.96;
-    let scale = 1;
-    let totalW = n * this.cardW + (n - 1) * gap;
-    if (totalW > maxRowW) {
-      scale = maxRowW / totalW;
-      gap *= scale;
-      totalW = maxRowW;
-    }
+    const capH = caption ? this.f(54) : 0; // espacio reservado para el rótulo (separado de las cartas)
+    const topAvail = this.yStatus + this.f(26) + capH;
+    // En juez-clásico la zona de descarte ocupa el fondo → dejarle sitio.
+    const discardH = classicJudging ? this.cardH * 0.4 + this.f(46) : 0;
+    const botAvail =
+      this.phase === "result" ? this.yButton - this.f(40) : this.H - discardH - this.f(24);
+    const gap0 = Math.max(this.handGap, this.f(28));
+    const widthScale = Math.min(1, maxRowW / (n * this.cardW + (n - 1) * gap0));
+    const heightScale = (botAvail - topAvail) / this.cardH;
+    const scale = Math.max(0.3, Math.min(widthScale, heightScale));
+    const gap = gap0 * scale;
     const w = this.cardW * scale;
     const h = this.cardH * scale;
+    const totalW = n * w + (n - 1) * gap;
     const startX = (this.W - totalW) / 2 + w / 2; // centros
-    const cy = this.yCenter;
+    const cy = (topAvail + botAvail) / 2;
 
-    const humanIsJudge = this.judgeIndex === 0;
-    const canJudge = this.phase === "judging" && humanIsJudge;
+    if (caption) {
+      // Justo debajo del banner (arriba): deja libre la franja sobre las cartas para
+      // la corona, sin chocar con el banner.
+      const capY = this.yStatus + this.f(56);
+      const capText = this.add
+        .text(this.W / 2, capY, caption, {
+          fontFamily: FONT_DISPLAY,
+          fontSize: `${this.f(26)}px`,
+          color: COLORS.textMuted,
+          letterSpacing: 0.5,
+        })
+        .setOrigin(0.5);
+      this.ui.add(capText);
+    }
 
-    this.submissions.forEach((sub, i) => {
-      const cx = startX + i * (w + gap);
+    const canJudgeAmarga = this.phase === "judging" && humanIsJudge && this.mode === "amarga";
+
+    visible.forEach(({ sub, i }, col) => {
+      const cx = startX + col * (w + gap);
       const isWinner = this.lastResult && this.lastResult.card === sub.card;
       const isWorst = this.worstResult && this.worstResult.card === sub.card;
       const card = this.makeRedCard(sub.card, isWinner);
       card.setScale(scale);
+      card.baseScale = scale;
       card.setPosition(cx, cy);
 
-      if (canJudge) {
-        // En Amarga, durante el paso "peor" no se puede re-elegir la mejor.
-        const blocked =
-          this.mode === "amarga" && this.judgingStep === "worst" && sub === this.bestPick;
+      if (classicJudging && humanIsJudge) {
+        // Gestos de juez: tap→modal (ganadora/descartar) · arrastrar abajo→descartar.
+        const img = card.cardImage;
+        img.setInteractive({ useHandCursor: true });
+        img.on("pointerover", () => {
+          if (this._cardDrag || this.confirmLayer) return;
+          card.setScale(scale * 1.06);
+          this.ui.bringToTop(card);
+        });
+        img.on("pointerout", () => { if (!this._cardDrag) card.setScale(scale); });
+        img.on("pointerdown", (p) => {
+          if (this.confirmLayer || this._cardDrag) return;
+          this._cardPress = { mode: "judge", i, text: sub.card, card, x: p.x, y: p.y };
+          this._handDragged = false;
+        });
+      } else if (canJudgeAmarga) {
+        // Amarga: durante el paso "peor" no se puede re-elegir la mejor.
+        const blocked = this.judgingStep === "worst" && sub === this.bestPick;
         if (!blocked) this.attachClick(card, this.cardW, this.cardH, () => this.judgePick(i), scale);
       }
 
       if (isWinner) {
-        this.drawCardTag(cx, cy - h / 2 - this.f(12), "GANADORA", COLORS.goldHex, COLORS.dark);
+        // Corona DETRÁS de la carta ganadora: la carta va encima y la corona asoma por
+        // arriba (reemplaza el tag "GANADORA"). Se agrega antes que la carta → detrás.
+        const cw = w * 0.55;
+        const chh = cw * (301 / 400);
+        const crown = this.add
+          .image(cx, cy - h / 2 + this.f(6), "corona")
+          .setOrigin(0.5, 1)
+          .setDisplaySize(cw, chh);
+        this.ui.add(crown);
       }
       if (isWorst) {
         this.drawCardTag(cx, cy - h / 2 - this.f(12), "MAMÓN AMARGO 🤢", "#8a1c10", "#ffffff");
@@ -1395,7 +1981,7 @@ export default class GameScene extends Phaser.Scene {
       if (revealOwners) {
         const owner = this.add
           .text(cx, cy + h / 2 + this.f(14), this.players[sub.playerIndex].name, {
-            fontFamily: "Segoe UI, sans-serif",
+            fontFamily: FONT_UI,
             fontSize: `${this.f(15)}px`,
             color: isWinner ? COLORS.goldHex : "#cccccc",
             fontStyle: isWinner ? "bold" : "normal",
@@ -1404,8 +1990,89 @@ export default class GameScene extends Phaser.Scene {
         this.ui.add(owner);
       }
 
-      this.ui.add(card);
+      this.ui.add(card); // la carta va por encima de la corona
     });
+
+    if (classicJudging) this.drawDiscardZone();
+  }
+
+  // Zona "Descartadas 🗑️" (abajo): caja + contador + stack de las descartadas.
+  drawDiscardZone() {
+    const discarded = this.submissions.map((_, i) => i).filter((i) => this.discardedIdx.has(i));
+    const miniScale = 0.4;
+    const miniW = this.cardW * miniScale;
+    const miniH = this.cardH * miniScale;
+    const zoneH = miniH + this.f(30);
+    const zoneW = Math.min(this.W * 0.92, this.f(560));
+    const cx = this.W / 2;
+    const bottom = this.H - this.f(10);
+    const top = bottom - zoneH;
+    this.discardZone = { top, bottom, cx, w: zoneW };
+
+    const zoneLeft = cx - zoneW / 2;
+    const zoneRight = cx + zoneW / 2;
+
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.28);
+    g.fillRoundedRect(zoneLeft, top, zoneW, zoneH, this.f(12));
+    g.lineStyle(1.5, COLORS.panelBorder, 0.85);
+    g.strokeRoundedRect(zoneLeft, top, zoneW, zoneH, this.f(12));
+    this.ui.add(g);
+
+    // Papelera (Pelón de cabeza en el bote): grande, a la izquierda, anclada al piso
+    // de la zona; sobresale un poco hacia arriba para darle presencia.
+    const pad = this.f(12);
+    const papH = Math.min(zoneH * 1.4, zoneW * 0.34);
+    const papCx = zoneLeft + pad + papH / 2;
+    const pap = this.add
+      .image(papCx, bottom - this.f(3), "papelera")
+      .setOrigin(0.5, 1)
+      .setDisplaySize(papH, papH);
+    this.ui.add(pap);
+
+    const contentLeft = papCx + papH / 2 + this.f(8);
+    const label = this.add
+      .text(contentLeft, top + this.f(14), `Descartadas (${discarded.length})`, {
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(15)}px`,
+        color: COLORS.textMuted,
+        letterSpacing: 0.5,
+      })
+      .setOrigin(0, 0.5);
+    this.ui.add(label);
+
+    // Stack de mini-cartas descartadas (a la derecha de la papelera, centrado en
+    // ese espacio; superpuesto si son muchas).
+    const stackRegionR = zoneRight - this.f(14);
+    const stackCx = (contentLeft + stackRegionR) / 2;
+    const availW = Math.max(miniW, stackRegionR - contentLeft);
+    const cyM = top + this.f(22) + miniH / 2;
+    const nd = discarded.length;
+    const stride = nd > 1
+      ? Math.min(miniW + this.f(4), (availW - miniW) / (nd - 1))
+      : 0;
+    const stackW = miniW + (nd - 1) * stride;
+    let x0 = stackCx - stackW / 2 + miniW / 2;
+    discarded.forEach((idx, j) => {
+      const mx = x0 + j * stride;
+      const mini = this.makeRedCard(this.submissions[idx].card);
+      mini.setPosition(mx, cyM);
+      if (idx === this._lastDiscarded) {
+        // Cae al 🗑️ desde arriba.
+        mini.setPosition(mx, cyM - this.f(80));
+        mini.setScale(miniScale * 1.3);
+        mini.setAlpha(0);
+        this.tweens.add({
+          targets: mini, x: mx, y: cyM, scale: miniScale, alpha: 0.9,
+          duration: 300, ease: "Back.easeOut",
+        });
+      } else {
+        mini.setScale(miniScale);
+        mini.setAlpha(0.9);
+      }
+      this.ui.add(mini);
+    });
+    this._lastDiscarded = null;
   }
 
   drawNextButton(text, onClick) {
@@ -1420,10 +2087,10 @@ export default class GameScene extends Phaser.Scene {
 
     const label = this.add
       .text(0, 0, text, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${this.f(21)}px`,
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(24)}px`,
         color: COLORS.dark,
-        fontStyle: "bold",
+        letterSpacing: 0.5,
       })
       .setOrigin(0.5);
     container.add(label);
@@ -1436,12 +2103,12 @@ export default class GameScene extends Phaser.Scene {
   drawCardTag(cx, y, text, bgHex, fgHex) {
     const tag = this.add
       .text(cx, y, text, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${this.f(12)}px`,
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(15)}px`,
         color: fgHex,
-        fontStyle: "bold",
         backgroundColor: bgHex,
-        padding: { x: 7, y: 3 },
+        letterSpacing: 0.5,
+        padding: { x: 8, y: 3 },
       })
       .setOrigin(0.5);
     this.ui.add(tag);
@@ -1449,27 +2116,194 @@ export default class GameScene extends Phaser.Scene {
 
   // Reverso de carta (marca): fondo verde + borde dorado + el logo centrado.
   // Se usa en "Pela el ojo" y en las boca-abajo del montoncito.
-  makeCardBack(w, h) {
+  // Reverso (dorso) por capas — el wordmark horneado. `color` = "roja" (mano/montón)
+  // o "verde". Placeholder de color base mientras carga el WebP.
+  makeCardBack(w, h, color = "roja") {
     const c = this.add.container(0, 0);
-    const r = 10;
-    const g = this.add.graphics();
-    g.fillStyle(COLORS.panel, 1);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
-    g.lineStyle(Math.max(2, w * 0.04), COLORS.gold, 1);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
-    c.add(g);
-
-    if (this.textures.exists("logo")) {
-      const img = this.add.image(0, 0, "logo").setOrigin(0.5);
-      const src = this.textures.get("logo").getSourceImage();
-      const scale = Math.min((w * 0.8) / src.width, (h * 0.8) / src.height);
-      img.setScale(scale);
-      c.add(img);
-    } else {
-      const q = this.add.text(0, 0, "🍈", { fontSize: `${Math.round(h * 0.3)}px` }).setOrigin(0.5);
-      c.add(q);
-    }
+    const img = this.add
+      .image(0, 0, this.ensurePlaceholderTexture(color))
+      .setOrigin(0.5)
+      .setDisplaySize(w, h);
+    c.add(this.cardShadow(w, h));
+    c.add(img);
+    this.applyReversoTexture(img, color, w, h);
+    c.add(this.cardKeyline(w, h));
     return c;
+  }
+
+  // ---------- Realce de la carta sobre el fieltro (separación figura-fondo) ----------
+  // El fondo verde de la carta (#1A4629, horneado en los WebP) casi iguala al fieltro
+  // (#1f4d2e→#10301d), así que la SILUETA se funde. No se recolorea el arte: se separa
+  // a nivel de sprite con sombra proyectada (flota) + filo dorado (traza el borde).
+  // Radio ~5% del ancho = el mismo redondeo horneado en el WebP, a cualquier tamaño.
+  cardRadius(w) {
+    return Math.max(6, Math.round(w * 0.05));
+  }
+
+  // Sombra proyectada suave: rounded-rects apilados (blur falso) desplazados hacia abajo.
+  // Sustituye la elipse de contacto: la carta lee como objeto físico sobre la mesa.
+  cardShadow(w, h) {
+    const g = this.add.graphics();
+    const r = this.cardRadius(w);
+    const dy = this.f(6);
+    const layers = [
+      { grow: this.f(7), alpha: 0.1 },
+      { grow: this.f(4), alpha: 0.14 },
+      { grow: this.f(1.5), alpha: 0.2 },
+    ];
+    for (const L of layers) {
+      g.fillStyle(0x000000, L.alpha);
+      g.fillRoundedRect(-w / 2 - L.grow, -h / 2 + dy - L.grow, w + L.grow * 2, h + L.grow * 2, r + L.grow);
+    }
+    return g;
+  }
+
+  // Filo (keyline) dorado que traza la silueta de la carta y la corta del fieltro.
+  cardKeyline(w, h) {
+    const g = this.add.graphics();
+    g.lineStyle(Math.max(1.5, this.f(1.5)), COLORS.gold, 0.9);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, this.cardRadius(w));
+    return g;
+  }
+
+  // ---------- Jugar carta: arrastrar al centro (directo) / tap (confirmar) ----------
+  // Empieza a arrastrar la carta bajo el press: oculta la original y crea un clon en
+  // animLayer (sin máscara) que sigue el puntero.
+  _beginCardDrag(p) {
+    const { mode, i, text, card } = this._cardPress;
+    this._cardPress = null;
+    this._dragging = false; // cortar el scroll
+    this._handVel = 0;
+    const orig = card || (this.handContainer && this.handContainer.list[i]);
+    if (orig) orig.setVisible(false);
+    const clone = this.makeRedCard(text);
+    clone.setPosition(p.x, p.y);
+    clone.setScale(1.12);
+    clone.setAlpha(0.96);
+    this.animLayer.add(clone);
+    this._cardDrag = { mode, i, text, card: clone, orig };
+  }
+
+  // ¿El puntero está en la zona destino del arrastre? play=arriba (centro), judge=🗑️.
+  _inDropZone(p, mode) {
+    return mode === "judge"
+      ? !!(this.discardZone && p.y > this.discardZone.top)
+      : !!(this.handBand && p.y < this.handBand.top);
+  }
+
+  _dragCardFollow(p) {
+    const d = this._cardDrag;
+    if (!d || !d.card.scene) return;
+    d.card.setPosition(p.x, p.y);
+    d.card.setScale(this._inDropZone(p, d.mode) ? 1.22 : 1.12); // realce en la zona
+  }
+
+  _endCardDrag(p) {
+    const d = this._cardDrag;
+    this._cardDrag = null;
+    if (d.card && d.card.scene) d.card.destroy();
+    if (this._inDropZone(p, d.mode)) {
+      if (d.mode === "judge") this.discardSubmission(d.i);
+      else this.humanPlayCard(d.i);
+    } else if (d.orig && d.orig.scene) {
+      d.orig.setVisible(true); // se suelta fuera → vuelve a su sitio
+      d.orig.setScale(d.orig.baseScale || 1);
+      // Restaurar su orden original en el solape (el hover pudo traerla al frente).
+      if (this.handContainer && d.orig.parentContainer === this.handContainer) {
+        this.handContainer.moveTo(d.orig, d.i);
+      }
+    }
+  }
+
+  // Modal genérico: carta grande centrada + título + N botones. Cada botón cierra el
+  // modal y ejecuta su onClick. Tocar fuera (dim) cancela.
+  openCardModal(text, title, buttons) {
+    if (this.confirmLayer) return;
+    const layer = this.add.container(0, 0);
+    this.confirmLayer = layer;
+
+    const dim = this.add.graphics();
+    dim.fillStyle(0x000000, 0.74);
+    dim.fillRect(0, 0, this.W, this.H);
+    dim.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, this.W, this.H),
+      Phaser.Geom.Rectangle.Contains
+    );
+    dim.on("pointerup", () => this.closeConfirm());
+    layer.add(dim);
+
+    // Carta grande (textura por capas, nítida).
+    const bigH = Math.min(this.H * 0.5, this.W * 0.8 * CARD_RATIO);
+    const scale = bigH / this.cardH;
+    const cy = this.H * 0.42;
+    const card = this.makeRedCard(text);
+    card.setPosition(this.W / 2, cy);
+    card.setScale(scale);
+    layer.add(card);
+
+    const q = this.add
+      .text(this.W / 2, cy - bigH / 2 - this.f(24), title, {
+        fontFamily: FONT_UI,
+        fontSize: `${this.f(18)}px`,
+        color: COLORS.textLight,
+        fontStyle: "bold",
+        align: "center",
+        wordWrap: { width: this.W * 0.9 },
+      })
+      .setOrigin(0.5);
+    layer.add(q);
+
+    // Botones en fila centrada bajo la carta.
+    const by = cy + bigH / 2 + this.f(32);
+    const bh = this.f(46);
+    const gap = this.f(12);
+    const bw = Math.min(this.f(200), (this.W * 0.94 - gap * (buttons.length - 1)) / buttons.length);
+    const totalW = buttons.length * bw + (buttons.length - 1) * gap;
+    let x = this.W / 2 - totalW / 2 + bw / 2;
+    for (const b of buttons) {
+      this.drawMiniButton(x, by, bw, bh, b.label, () => { this.closeConfirm(); b.onClick(); }, !!b.primary, layer);
+      x += bw + gap;
+    }
+  }
+
+  // Modal al tocar una carta de la mano: jugar / cancelar.
+  openPlayConfirm(i, text) {
+    if (this.confirmLayer) return;
+    if (this.phase !== "play" || this.judgeIndex === 0 || this._animatingPlay) return;
+    if (this.humanSubmittedCount() >= this.humanPlaysNeeded) return;
+    this._handModalOpen = true; // al cerrar, resetear el orden/escala de la mano
+    this.openCardModal(text, "¿Quieres jugar esta carta?", [
+      { label: "Sí, jugar", primary: true, onClick: () => this.humanPlayCard(i) },
+      { label: "Cancelar", primary: false, onClick: () => {} },
+    ]);
+  }
+
+  // Modal al tocar una jugada siendo Juez (Clásica): ganadora / descartar / cancelar.
+  openJudgeConfirm(i, text) {
+    if (this.confirmLayer) return;
+    if (this.phase !== "judging" || this.judgeIndex !== 0 || this.mode === "amarga") return;
+    if (this.discardedIdx.has(i)) return;
+    this._handModalOpen = true; // al cerrar, resetear el orden/escala de las jugadas
+    this.openCardModal(text, "¿Qué haces con esta carta?", [
+      { label: "Escoger como ganadora", primary: true, onClick: () => this.chooseWinner(i) },
+      { label: "Descartar esta carta", primary: false, onClick: () => this.discardSubmission(i) },
+      { label: "Cancelar", primary: false, onClick: () => {} },
+    ]);
+  }
+
+  closeConfirm() {
+    if (this.confirmLayer) {
+      this.confirmLayer.destroy(true);
+      this.confirmLayer = null;
+    }
+    // Si venía de un modal de la mano/jugadas, re-renderiza para resetear el orden y
+    // la escala de las cartas (el hover previo pudo dejar alguna al frente/agrandada).
+    if (this._handModalOpen) {
+      this._handModalOpen = false;
+      if (this.players && this.players.length && (this.phase === "play" || this.phase === "judging")) {
+        this.render();
+      }
+    }
   }
 
   // Mini botón (por defecto se añade a this.ui; el overlay pasa su propia capa).
@@ -1485,10 +2319,10 @@ export default class GameScene extends Phaser.Scene {
     c.add(g);
     const t = this.add
       .text(0, 0, text, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${this.f(14)}px`,
+        fontFamily: FONT_DISPLAY,
+        fontSize: `${this.f(17)}px`,
         color: primary ? COLORS.dark : COLORS.textLight,
-        fontStyle: "bold",
+        letterSpacing: 0.5,
       })
       .setOrigin(0.5);
     c.add(t);
@@ -1503,7 +2337,7 @@ export default class GameScene extends Phaser.Scene {
   rouletteText(parent, cx, y, text, size, color, bold, wrapW) {
     const t = this.add
       .text(cx, y, text, {
-        fontFamily: "Segoe UI, sans-serif",
+        fontFamily: FONT_UI,
         fontSize: `${this.f(size)}px`,
         color,
         fontStyle: bold ? "bold" : "normal",
@@ -1729,59 +2563,32 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // Dibuja el título en la CABECERA superior de una carta (mismo tratamiento
-  // para verdes y amarillas): anclado arriba, ajustado para no invadir la
-  // ilustración, con contorno blanco para legibilidad. Devuelve el texto.
-  drawCardHeader(container, text, baseFont, color, w, h) {
-    const padTop = h * 0.07;
-    const headerH = h * 0.3;
-    const label = this.add
-      .text(0, -h / 2 + padTop, text, {
-        fontFamily: "Segoe UI, sans-serif",
-        fontSize: `${baseFont}px`,
-        color: color,
-        fontStyle: "bold",
-        align: "center",
-        wordWrap: { width: w * 0.84 },
-        stroke: "#ffffff",
-        strokeThickness: 3,
-        lineSpacing: -1,
-      })
-      .setOrigin(0.5, 0);
-    this.fitText(label, headerH, Math.max(8, baseFont - 5));
-    container.add(label);
-    return label;
-  }
-
-  // Carta amarilla (sustantivo): el texto va en la CABECERA superior y la
-  // ilustración del racimo queda limpia debajo, sin superponerse.
+  // Carta amarilla (sustantivo): cara POR CAPAS (fondo por pose + título rotado +
+  // flavor), igual que el online. La textura se rasteriza y cachea bajo demanda.
   makeRedCard(text, isWinner) {
     const w = this.cardW;
     const h = this.cardH;
     const container = this.add.container(0, 0);
 
-    const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.22);
-    shadow.fillEllipse(0, h / 2 - 2, w * 0.82, h * 0.09);
-    container.add(shadow);
+    container.add(this.cardShadow(w, h));
 
     const img = this.add
-      .image(0, 0, this.redTex)
+      .image(0, 0, this.ensurePlaceholderTexture("roja"))
       .setOrigin(0.5)
       .setDisplaySize(w, h);
     container.add(img);
     container.cardImage = img; // referencia para la zona clickeable (toda la carta)
+    // Cara POR CAPAS (fondo por pose + título/flavor); reemplaza el placeholder al cargar.
+    this.applyCardTexture(img, "roja", text, w, h);
+    container.add(this.cardKeyline(w, h)); // filo dorado: separa del fieltro
 
     if (isWinner) {
       const border = this.add.graphics();
       border.lineStyle(4, COLORS.gold, 1);
-      // Radio fijo 10, alineado al borde de la carta (que también usa radio 10).
-      border.strokeRoundedRect(-w / 2, -h / 2, w, h, 10);
+      // Radio proporcional (~5% del ancho), alineado al redondeo horneado del WebP.
+      border.strokeRoundedRect(-w / 2, -h / 2, w, h, this.cardRadius(w));
       container.add(border);
     }
-
-    // Cabecera: el sustantivo arriba; la ilustración queda libre debajo.
-    this.drawCardHeader(container, text, this.cardFont, TITLE_RED, w, h);
 
     return container;
   }
@@ -1790,17 +2597,15 @@ export default class GameScene extends Phaser.Scene {
   // se usa esa imagen (su zona de clic es exactamente toda la carta); si no
   // (p. ej. el botón), se usa un rectángulo centrado del tamaño dado.
   attachClick(container, w, h, onClick, baseScale = 1) {
-    const target = container.cardImage || container;
-    if (target === container) {
-      container.setSize(w, h);
-      container.setInteractive({
-        hitArea: new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
-        hitAreaCallback: Phaser.Geom.Rectangle.Contains,
-        useHandCursor: true,
-      });
-    } else {
-      target.setInteractive({ useHandCursor: true });
+    // Cartas: la imagen ya trae su hit-area (toda la carta). Botones/otros: un
+    // rectángulo invisible interactivo dentro del contenedor = hit-area fiable y
+    // centrada que cubre TODO el botón (el hitArea manual sobre el contenedor fallaba).
+    let target = container.cardImage;
+    if (!target) {
+      target = this.add.rectangle(0, 0, w, h, 0x000000, 0); // fillAlpha 0 (invisible)
+      container.add(target); // encima de fondo+texto → captura el clic en toda el área
     }
+    target.setInteractive({ useHandCursor: true });
 
     target.on("pointerover", () => {
       container.setScale(baseScale * 1.08);

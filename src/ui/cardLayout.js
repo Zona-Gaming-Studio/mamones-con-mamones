@@ -8,28 +8,33 @@ import POSES from "../game/data/poses.json";
 // ---------- Lienzo / colores (igual que el generador) ----------
 const W = 1623, H = 2485;
 const BG_VERDE = "#1A4629";
+// Color del título en la barra amarilla (#FCC740, muy clara): verde fieltro para contraste
+// legible (~9:1). El título verde sigue en blanco sobre su barra #559D33 (media-oscura).
+const TITULO_A_FILL = "#16331f";
 
 // ---------- Geometría VERDE (adjetivos) ----------
-const TITULO = { cx: 250, topY: 100, size: 345, ls: 14, maxLen: 2250 };
-const PILDORA = { rightX: 1555, cy: 1830, h: 196, padX: 72, ls: 8, size: 160, maxW: 1060, textDy: 8 };
+// Título rotado a 480 (Teko). Barra ~416px de ancho; Teko cap con acentos ~0.78·size
+// => 374px (~90% de la barra, margen para tildes/ñ). Solo agranda los títulos cortos;
+// los largos igual encogen con fitText para caber en maxLen. (Teko cap=622 vs Bebas 700.)
+const TITULO = { cx: 250, topY: 100, size: 480, ls: 14, maxLen: 2250 };
+const PILDORA = { rightX: 1555, cy: 1830, h: 196, padX: 72, ls: 8, size: 200, maxW: 1060, textDy: 8 };
 const FLAVOR = { rightX: 1488, baseline1: 2165, gap: 183.65, size: 153.04, maxW: 790 };
 
 // ---------- Geometría AMARILLA/ROJA (sustantivos) ----------
-const TITULO_A = { cx: 256, topY: 150, barMid: (43 + 2416) / 2, size: 330, ls: 12, maxLen: 2230, min1Line: 158, colGapFactor: 1.12, maxBlockW: 330 };
+const TITULO_A = { cx: 256, topY: 150, barMid: (43 + 2416) / 2, size: 480, ls: 12, maxLen: 2230, min1Line: 158, colGapFactor: 1.12, maxBlockW: 330 };
 const FLAVOR_A = { rightX: 1500, boxTop: 1770, boxH: 560, maxW: 760, baseSize: 150, lineRatio: 1.16, minSize: 60 };
 
 // ---------- Fuentes: strings para canvas ctx.font ----------
-const bebasFor = (s) => `${s}px "Bebas Neue"`;
-const mont200For = (s) => `italic 200 ${s}px "Montserrat"`;
-const mont400For = (s) => `italic 400 ${s}px "Montserrat"`;
+// Título/píldora = Teko 700 (condensada, alta, con peso real; reemplazó a Bebas).
+const tekoFor = (s) => `700 ${s}px "Teko"`;
+const mont600For = (s) => `italic 600 ${s}px "Montserrat"`; // flavor: SemiBold, legible en pequeño
 
 // Espera a que las fuentes propias estén listas antes de medir (si no, canvas mide con fallback).
 export const cardFontsReady =
   typeof document !== "undefined" && document.fonts
     ? Promise.all([
-        document.fonts.load('400 40px "Bebas Neue"'),
-        document.fonts.load('italic 200 40px "Montserrat"'),
-        document.fonts.load('italic 400 40px "Montserrat"'),
+        document.fonts.load('700 40px "Teko"'),
+        document.fonts.load('italic 600 40px "Montserrat"'),
       ]).then(() => document.fonts.ready)
     : Promise.resolve();
 
@@ -54,6 +59,29 @@ function fitText(fontFor, text, size, ls, maxLen) {
 
 const esc = (s) =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// ---------- Título rotado: centrado por mayúscula + tope por ancho de barra ----------
+// Métricas Teko (por em): altura de mayúscula y alto real de mayúsculas CON tilde/ñ.
+const TEKO_CAP = 0.622;
+const TEKO_ACCENT = 0.78;
+const BAR_W = 416;     // ancho de la barra de título (x54..470, roja y verde)
+const BAR_MARGIN = 12; // aire a cada lado del texto
+
+// Tamaño máximo para que el título quepa a lo ANCHO de la barra (centrado por la
+// mayúscula). Si el título trae tilde/ñ se reserva su alto extra; si no, cabe más.
+function widthCapForTitle(titulo) {
+  const acc = /[ÁÉÍÓÚÜÑ]/.test(titulo); // ya viene en mayúsculas
+  const half = BAR_W / 2 - BAR_MARGIN;
+  return acc ? half / (TEKO_ACCENT - TEKO_CAP / 2) : half / (TEKO_CAP / 2);
+}
+
+// Un <text> rotado +90 centrado en la barra por la CAJA DE MAYÚSCULA (no por el
+// central de la fuente: en Teko el central descentra y saca las tildes). Baseline
+// alfabético (determinista en SVG-como-img y SVG inline) + y = capHeight/2.
+function rotTitle(cx, txt, size, ls, startY, fill) {
+  const yOff = ((TEKO_CAP / 2) * size).toFixed(1);
+  return `<g transform="translate(${cx.toFixed(1)},${startY.toFixed(1)}) rotate(90)"><text x="0" y="${yOff}" font-family="Teko" font-weight="700" font-size="${size}" letter-spacing="${ls}" fill="${fill}" text-anchor="start">${esc(txt)}</text></g>`;
+}
 
 // ---------- Word-wrap + auto-fit del flavor amarilla (frase) ----------
 function wrapFit(fontFor, text, { maxW, boxH, baseSize, lineRatio, minSize }) {
@@ -105,35 +133,40 @@ function splitTwoLines(text) {
 function amarillaTitle(titulo) {
   const A = TITULO_A;
   const startYFor = (len) => Math.min(A.topY, A.barMid - len / 2);
-  const col = (cx, txt, size, ls, startY) =>
-    `<g transform="translate(${cx.toFixed(1)},${startY.toFixed(1)}) rotate(90)"><text x="0" y="0" font-family="Bebas Neue" font-size="${size}" letter-spacing="${ls}" fill="#fff" text-anchor="start" dominant-baseline="central">${esc(txt)}</text></g>`;
 
-  const one = fitText(bebasFor, titulo, A.size, A.ls, A.maxLen);
-  if (one.size >= A.min1Line || !titulo.includes(" ")) {
-    const len = measure(bebasFor, titulo, one.size, one.ls);
-    return col(A.cx, titulo, one.size, one.ls, startYFor(len));
+  // 1 línea: tope por largo (maxLen) Y por ancho de barra (con acentos).
+  const one = fitText(tekoFor, titulo, A.size, A.ls, A.maxLen);
+  const size1 = Math.min(one.size, widthCapForTitle(titulo));
+  if (size1 >= A.min1Line || !titulo.includes(" ")) {
+    const ls1 = A.ls * (size1 / A.size);
+    const len = measure(tekoFor, titulo, size1, ls1);
+    return rotTitle(A.cx, titulo, size1, ls1, startYFor(len), TITULO_A_FILL);
   }
+  // 2 columnas: ya son angostas (capByWidth), no requieren el tope de acento.
   const [l1, l2] = splitTwoLines(titulo);
-  const f1 = fitText(bebasFor, l1, A.size, A.ls, A.maxLen);
-  const f2 = fitText(bebasFor, l2, A.size, A.ls, A.maxLen);
+  const f1 = fitText(tekoFor, l1, A.size, A.ls, A.maxLen);
+  const f2 = fitText(tekoFor, l2, A.size, A.ls, A.maxLen);
   const capByWidth = A.maxBlockW / (1 + A.colGapFactor);
   const size = Math.min(f1.size, f2.size, capByWidth);
   const ls = A.ls * (size / A.size);
   const colGap = A.colGapFactor * size;
-  const startY = startYFor(Math.max(measure(bebasFor, l1, size, ls), measure(bebasFor, l2, size, ls)));
-  return col(A.cx + colGap / 2, l1, size, ls, startY) + col(A.cx - colGap / 2, l2, size, ls, startY);
+  const startY = startYFor(Math.max(measure(tekoFor, l1, size, ls), measure(tekoFor, l2, size, ls)));
+  return (
+    rotTitle(A.cx + colGap / 2, l1, size, ls, startY, TITULO_A_FILL) +
+    rotTitle(A.cx - colGap / 2, l2, size, ls, startY, TITULO_A_FILL)
+  );
 }
 
 // SVG interior AMARILLA/ROJA (sin píldora; flavor = frase word-wrap centrada vertical).
 function svgAmarilla(texto, flavor) {
   const titulo = String(texto).toUpperCase();
   const t = amarillaTitle(titulo);
-  const fl = wrapFit(mont400For, flavor || "", FLAVOR_A);
+  const fl = wrapFit(mont600For, flavor || "", FLAVOR_A);
   const totalH = fl.lines.length * fl.gap;
   const startBaseline = FLAVOR_A.boxTop + (FLAVOR_A.boxH - totalH) / 2 + fl.size * 0.78;
   const lines = fl.lines
     .map((s, i) =>
-      `<text x="${FLAVOR_A.rightX}" y="${startBaseline + i * fl.gap}" font-family="Montserrat" font-style="italic" font-weight="400" font-size="${fl.size}" fill="#fff" text-anchor="end">${esc(s)}</text>`
+      `<text x="${FLAVOR_A.rightX}" y="${startBaseline + i * fl.gap}" font-family="Montserrat" font-style="italic" font-weight="600" font-size="${fl.size}" fill="#fff" text-anchor="end">${esc(s)}</text>`
     )
     .join("");
   return t + lines;
@@ -142,23 +175,25 @@ function svgAmarilla(texto, flavor) {
 // SVG interior VERDE (píldora con la palabra calada + flavor 2 sinónimos, derecha).
 function svgVerde(texto, sinonimos) {
   const titulo = String(texto).toUpperCase();
-  const tFit = fitText(bebasFor, titulo, TITULO.size, TITULO.ls, TITULO.maxLen);
-  const pFit = fitText(bebasFor, titulo, PILDORA.size, PILDORA.ls, PILDORA.maxW - PILDORA.padX * 2);
-  const wordW = measure(bebasFor, titulo, pFit.size, pFit.ls);
+  const tFit = fitText(tekoFor, titulo, TITULO.size, TITULO.ls, TITULO.maxLen);
+  const tSize = Math.min(tFit.size, widthCapForTitle(titulo)); // tope por ancho de barra
+  const tLs = TITULO.ls * (tSize / TITULO.size);
+  const pFit = fitText(tekoFor, titulo, PILDORA.size, PILDORA.ls, PILDORA.maxW - PILDORA.padX * 2);
+  const wordW = measure(tekoFor, titulo, pFit.size, pFit.ls);
   const pillW = wordW + PILDORA.padX * 2;
   const pillX = PILDORA.rightX - pillW;
   const pillY = PILDORA.cy - PILDORA.h / 2;
   const rx = PILDORA.h / 2;
   const flavorLines = (sinonimos || [])
     .map((s, i) => {
-      const fFit = fitText(mont200For, s, FLAVOR.size, 0, FLAVOR.maxW);
-      return `<text x="${FLAVOR.rightX}" y="${FLAVOR.baseline1 + i * FLAVOR.gap}" font-family="Montserrat" font-style="italic" font-weight="200" font-size="${fFit.size}" fill="#fff" text-anchor="end">${esc(s)}</text>`;
+      const fFit = fitText(mont600For, s, FLAVOR.size, 0, FLAVOR.maxW);
+      return `<text x="${FLAVOR.rightX}" y="${FLAVOR.baseline1 + i * FLAVOR.gap}" font-family="Montserrat" font-style="italic" font-weight="600" font-size="${fFit.size}" fill="#fff" text-anchor="end">${esc(s)}</text>`;
     })
     .join("");
   return (
     `<rect x="${pillX}" y="${pillY}" width="${pillW}" height="${PILDORA.h}" rx="${rx}" ry="${rx}" fill="#fff"/>` +
-    `<text x="${PILDORA.rightX - PILDORA.padX}" y="${PILDORA.cy + PILDORA.textDy}" font-family="Bebas Neue" font-size="${pFit.size}" letter-spacing="${pFit.ls}" fill="${BG_VERDE}" text-anchor="end" dominant-baseline="central">${esc(titulo)}</text>` +
-    `<g transform="translate(${TITULO.cx},${TITULO.topY}) rotate(90)"><text x="0" y="0" font-family="Bebas Neue" font-size="${tFit.size}" letter-spacing="${tFit.ls}" fill="#fff" text-anchor="start" dominant-baseline="central">${esc(titulo)}</text></g>` +
+    `<text x="${PILDORA.rightX - PILDORA.padX}" y="${PILDORA.cy + PILDORA.textDy}" font-family="Teko" font-weight="700" font-size="${pFit.size}" letter-spacing="${pFit.ls}" fill="${BG_VERDE}" text-anchor="end" dominant-baseline="central">${esc(titulo)}</text>` +
+    rotTitle(TITULO.cx, titulo, tSize, tLs, TITULO.topY, "#fff") +
     flavorLines
   );
 }
@@ -173,9 +208,12 @@ function splitSinonimos(flavor) {
 }
 
 // La pose (categoría→figura) por color+texto, para elegir el fondo WebP.
+// Tolerante al apóstrofe de jerga: algunas verdes son canónicas con ' final
+// (Camburao'), pero ciertos datos las traen sin él (Camburao) → probamos ambas.
 export function poseFor(color, texto) {
   const map = POSES[color] || {};
-  return map[texto] || map[String(texto).trim()] || "";
+  const t = String(texto).trim();
+  return map[texto] || map[t] || map[t + "'"] || map[t.replace(/'+$/, "")] || "";
 }
 
 // URL del fondo por capa (base+patrón+barra+figura, sin texto).

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../net/api.js";
 import { initSfx, isSfxEnabled, setSfxEnabled, spinTicks, beep, beepUrge, ding } from "../lib/sfx.js";
 import Recap from "./Recap.jsx";
@@ -112,6 +112,31 @@ function Carta({ color, titulo, flavor, onClick, onDoubleClick, disabled, ganado
   );
 }
 
+const CARD_RATIO = 2485 / 1623; // alto/ancho del lienzo de la carta
+
+// Pila de cartas verdes ganadas (estilo Apples to Apples): superpuestas hacia la
+// derecha dejando ver solo el borde IZQUIERDO de cada una (donde va el título);
+// la última se ve entera. `miniH` = alto en px; `reveal` = fracción del ancho
+// visible por carta tapada (~0.26 ≈ franja del título).
+function GreenStack({ greens, miniH, reveal = 0.26 }) {
+  if (!greens?.length) return null;
+  const w = miniH / CARD_RATIO;
+  const stride = w * reveal;
+  return (
+    <span className="og__gstack" style={{ height: miniH, width: w + (greens.length - 1) * stride }}>
+      {greens.map((texto, i) => (
+        <span
+          key={i}
+          className="carta carta--verde og__gmini"
+          style={{ width: w, height: miniH, left: i * stride, zIndex: i }}
+        >
+          <CartaArte color="verde" texto={texto} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const [sala, setSala] = useState(null);
   const [metaSrv, setMetaSrv] = useState(null); // meta congelada por el server
@@ -176,6 +201,18 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
   const congSecs = congelado ? Math.ceil((congeladoHasta - nowTs) / 1000) : 0;
   const yaJugue = misJugadas >= cartasAJugar;
   const meta = metaSrv ?? (sala?.config?.meta || metaGanar(players.length));
+
+  // Verdes ganadas por jugador, derivadas del historial {ronda, verde, ganadorUid}.
+  const [greensOpen, setGreensOpen] = useState(false); // overlay de verdes ganadas
+  const greensByUid = useMemo(() => {
+    const m = {};
+    (sala?.historial || []).forEach((h) => {
+      if (!h?.ganadorUid || !h?.verde) return;
+      (m[h.ganadorUid] ||= []).push(h.verde);
+    });
+    return m;
+  }, [sala?.historial]);
+  const hayVerdes = Object.keys(greensByUid).length > 0;
 
   const deadline = sala?.fase_hasta ?? null; // ms de epoch (snapshot)
   const secsLeft = deadline ? Math.max(0, Math.ceil((deadline - nowTs) / 1000)) : null;
@@ -452,11 +489,23 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
         </span>
       </header>
 
-      <div className="og__scores">
+      <div
+        className={`og__scores ${hayVerdes ? "og__scores--click" : ""}`}
+        onClick={hayVerdes ? () => setGreensOpen(true) : undefined}
+        role={hayVerdes ? "button" : undefined}
+        tabIndex={hayVerdes ? 0 : undefined}
+        title={hayVerdes ? "Ver las cartas verdes ganadas" : undefined}
+        onKeyDown={
+          hayVerdes
+            ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setGreensOpen(true))
+            : undefined
+        }
+      >
         {players.map((p) => {
           const isJuez = p.uid === sala.juez_uid;
           const yo = p.uid === uid;
           const jugo = jugaron.includes(p.uid);
+          const greens = greensByUid[p.uid] || [];
           let estado = null;
           if (isJuez) estado = "⚖️ Juez";
           else if (fase === "jugando") estado = jugo ? "✓ jugó" : "pensando…";
@@ -468,6 +517,7 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
                 {yo ? " (tú)" : ""}
               </span>
               {estado && <span className="chip__estado">{estado}</span>}
+              {greens.length > 0 && <GreenStack greens={greens} miniH={24} />}
             </span>
           );
         })}
@@ -705,6 +755,46 @@ export default function OnlineGame({ cliente, uid, codigo, onLeave }) {
       {/* Vista ampliada al mantener pulsada una carta.
           El overlay tiene pointer-events:none (el cierre vive en el endPress de la carta),
           así que no lleva handlers propios. */}
+      {/* Overlay de verdes ganadas: se abre tocando el marcador */}
+      {greensOpen && (
+        <div className="og__greens" onClick={() => setGreensOpen(false)}>
+          <div className="og__greens-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="og__greens-head">
+              <h3 className="og__greens-title">Cartas verdes ganadas · Meta {meta}</h3>
+              <button className="og__greens-x" onClick={() => setGreensOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="og__greens-body">
+              {players.map((p) => {
+                const greens = greensByUid[p.uid] || [];
+                const yo = p.uid === uid;
+                return (
+                  <div key={p.uid} className="og__greens-row">
+                    <div className="og__greens-who">
+                      <span className="og__greens-name">
+                        {p.nombre}
+                        {yo ? " (tú)" : ""}
+                      </span>
+                      <span className="og__greens-cnt">
+                        {p.puntos}/{meta}
+                      </span>
+                    </div>
+                    <div className="og__greens-cards">
+                      {greens.length > 0 ? (
+                        <GreenStack greens={greens} miniH={92} reveal={0.32} />
+                      ) : (
+                        <span className="og__greens-none">Sin verdes aún</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {preview && (
         <div className="og__preview">
           <div className={`carta carta--${preview.color} og__preview-card`}>
