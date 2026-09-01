@@ -1086,20 +1086,27 @@ export default class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
   startTimer(seconds, onExpire) {
     this.stopTimer();
-    this.timerDeadline = this.time.now + seconds * 1000;
     this._onTimerExpire = onExpire;
     this.renderTimer(seconds);
+    // La expiración va en su propio TimerEvent (basado en delta acumulado, no en
+    // this.time.now). Ojo: este reloj vale ~0 durante create() y luego salta a
+    // performance.now(); calcular un "deadline" con él hacía vencer la ronda al
+    // instante si la pestaña llevaba >seconds abierta. El delay del evento es
+    // inmune a eso.
     this.timerEvent = this.time.addEvent({
+      delay: seconds * 1000,
+      callback: () => {
+        const cb = this._onTimerExpire;
+        this.stopTimer();
+        if (cb) cb();
+      },
+    });
+    // Tick de refresco del contador: lee lo que resta del propio evento.
+    this.timerTick = this.time.addEvent({
       delay: 200,
       loop: true,
       callback: () => {
-        const remMs = this.timerDeadline - this.time.now;
-        this.renderTimer(Math.max(0, Math.ceil(remMs / 1000)));
-        if (remMs <= 0) {
-          const cb = this._onTimerExpire;
-          this.stopTimer();
-          if (cb) cb();
-        }
+        if (this.timerEvent) this.renderTimer(Math.max(0, Math.ceil(this.timerEvent.getRemainingSeconds())));
       },
     });
   }
@@ -1108,6 +1115,10 @@ export default class GameScene extends Phaser.Scene {
     if (this.timerEvent) {
       this.timerEvent.remove();
       this.timerEvent = null;
+    }
+    if (this.timerTick) {
+      this.timerTick.remove();
+      this.timerTick = null;
     }
     this._onTimerExpire = null;
     if (this.hud) this.hud.removeAll(true);
